@@ -24,7 +24,7 @@ from keras.models import Model
 from preprocessing import gauss_kernel, rgb2gray, NormalizeData
 from architectures import resblock
 
-#from loss_functions import vgg_loss
+from loss_functions import vgg_loss
 from keras.applications.vgg19 import VGG19
 
 class CycleGAN():
@@ -103,8 +103,7 @@ class CycleGAN():
         
         
         
-        self.combined.compile(loss=['mse', 'mse',
-                                    self.vgg_loss],
+        self.combined.compile(loss=['mse', 'mse', vgg_loss],
                             loss_weights=[0.1, 0.05, 1],
                             optimizer=optimizer)
         
@@ -219,7 +218,7 @@ class CycleGAN():
         
         return Model(inputs=image, outputs=logits, name=name)
     
-    
+    r"""
     def vgg_loss(self, y_true, y_pred):
         
         # Create a loss function based on VGG19 feature final feature map
@@ -240,26 +239,6 @@ class CycleGAN():
     
        
         # Return a function
-        return K.mean(K.square(f_p - f_t)) 
-    
-    
-    """
-    def vgg_loss(self, y_true, y_pred):
-
-        # Create a loss function that adds the MSE loss to the mean of all squared activations of a specific layer
-        
-        model = VGG19(include_top=False)
-        #outputs_dict = dict([(layer.name, layer.output) for layer in model.layers])
-        
-        get_3rd_layer_output = K.function([model.layers[0].input],
-                                  [model.layers[3].output])
-        
-        f_p = get_3rd_layer_output([y_pred])[0]
-        f_t = get_3rd_layer_output([y_true])[0]
-        #f_p = vggmodel(y_pred)  
-        #f_t = vggmodel(y_true)  
-        
-        
         return K.mean(K.square(f_p - f_t)) 
     """
 
@@ -318,59 +297,53 @@ class CycleGAN():
 
                 # If at save interval => save generated image samples
                 if batch_i % sample_interval == 0:
+                    print("Epoch: {} --- Batch: {} ---- saved".format(epoch, batch_i))
                     self.sample_images(epoch, batch_i)
 
     def sample_images(self, epoch, batch_i):
         os.makedirs('images/%s' % self.dataset_name, exist_ok=True)
         r, c = 1, 3
 
-        imgs_A = self.data_loader.load_data(domain="A", batch_size=1, is_testing=True)
-        
+        imgs_A = self.data_loader.load_data(domain="A", batch_size=10, is_testing=True)
+        #print(imgs_A.shape)
         #imgs_B = self.data_loader.load_data(domain="B", batch_size=1, is_testing=True)
-
-        # Demo (for GIF)
-        #imgs_A = self.data_loader.load_img('datasets/apple2orange/testA/n07740461_1541.jpg')
-        #imgs_B = self.data_loader.load_img('datasets/apple2orange/testB/n07749192_4241.jpg')
-
-        # Translate images to the other domain
-        fake_B = self.G.predict(imgs_A)
         
-        #fake_A = self.g_BA.predict(imgs_B)
-        # Translate back to original domain
-        reconstr_A = self.F.predict(fake_B)
         
-        #reconstr_B = self.g_AB.predict(fake_A)
-        
-        imgs_A = NormalizeData(imgs_A)
-        fake_B = NormalizeData(fake_B)
-        reconstr_A = NormalizeData(reconstr_A)
-        gen_imgs = np.concatenate([imgs_A, fake_B, reconstr_A])
-
-        # Rescale images 0 - 1
-        
-        #gen_imgs = 0.5 * gen_imgs + 0.5
-
-        titles = ['Original', 'Translated', 'Reconstructed']
-        fig, axs = plt.subplots(r, c)
-        cnt = 0
-        
-        for ax in axs.flat:
-            ax.imshow(gen_imgs[cnt])
-            ax.set_title(titles[cnt])
-            cnt += 1
-         
-        r"""
-        for i in range(r):
-            for j in range(c):
-                axs[i,j].imshow(gen_imgs[cnt])
-                axs[i, j].set_title(titles[j])
-                axs[i,j].axis('off')
+        for i in range(imgs_A.shape[0]):
+            
+            image=np.expand_dims(imgs_A[i,:,:,:], axis=0)
+            # Translate images to the other domain
+            fake_B = self.G.predict(image)
+            
+            #fake_A = self.g_BA.predict(imgs_B)
+            # Translate back to original domain
+            reconstr_A = self.F.predict(fake_B)
+            
+            #reconstr_B = self.g_AB.predict(fake_A)
+            
+            n_image = NormalizeData(image)
+            n_fake_B = NormalizeData(fake_B)
+            n_reconstr_A = NormalizeData(reconstr_A)
+            
+            gen_imgs = np.concatenate([n_image, n_fake_B, n_reconstr_A])
+    
+            # Rescale images 0 - 1
+            
+            #gen_imgs = 0.5 * gen_imgs + 0.5
+    
+            titles = ['Original', 'Translated', 'Reconstructed']
+            fig, axs = plt.subplots(r, c)
+            cnt = 0
+            
+            for ax in axs.flat:
+                ax.imshow(gen_imgs[cnt])
+                ax.set_title(titles[cnt])
                 cnt += 1
-        """
-        
-        fig.savefig("images/%s/%d_%d.png" % (self.dataset_name, epoch, batch_i))
+             
+            
+            fig.savefig("images/%s/%d_%d_%d.png" % (self.dataset_name, epoch, batch_i, i))
         plt.close()
-
+        
 
 if __name__ == '__main__':
     gan = CycleGAN()

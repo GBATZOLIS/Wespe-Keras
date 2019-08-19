@@ -8,6 +8,7 @@ Created on Wed Aug 14 21:24:53 2019
 import scipy
 from glob import glob
 import numpy as np
+import matplotlib.pyplot as plt
 
 class DataLoader():
     def __init__(self, dataset_name, img_res=(128, 128)):
@@ -15,36 +16,39 @@ class DataLoader():
         self.img_res = img_res
         
     
-    def get_random_patch(self, img, scale=1):
+    def get_random_patch(self, img, patch_dimension):
+        
         image_shape=img.shape
-        x_max=image_shape[0]-int(scale*self.img_res[0])
-        y_max=image_shape[1]-int(scale*self.img_res[1])
-        x_index=np.random.randint(x_max)
-        y_index=np.random.randint(y_max)
         
-        return img[x_index:x_index+int(scale*self.img_res[0]), y_index:y_index+int(scale*self.img_res[1])]
+        image_length = img.shape[0]
+        image_width = img.shape[1]
+        patch_length = patch_dimension[0]
+        patch_width = patch_dimension[1]
         
-    def load_data(self, domain, batch_size=1, is_testing=False):
+        if (image_length >= patch_length) and (image_width >= patch_width):
+            x_max=image_shape[0]-patch_dimension[0]
+            y_max=image_shape[1]-patch_dimension[1]
+            x_index=np.random.randint(x_max)
+            y_index=np.random.randint(y_max)
+        else:
+            print("Error. Not valid patch dimensions")
+        
+        return img[x_index:x_index+patch_dimension[0], y_index:y_index+patch_dimension[1], :]
+        
+    def load_data(self, domain, patch_dimension=None, batch_size=1, is_testing=False):
         data_type = r"train%s" % domain if not is_testing else "test%s" % domain
-        path = glob(r'C:\Users\\Georgios\\Desktop\\4year project\\wespeDATA\\%s\\%s\\*' % (self.dataset_name, data_type))
-        
+        main_path = r"C:\Users\\Georgios\\Desktop\\4year project\\wespeDATA"
+        path = glob(r'%s\\%s\\%s\\*' % (main_path, self.dataset_name, data_type))
         batch_images = np.random.choice(path, size=batch_size)
-
+        
+        if patch_dimension==None:
+            #if the patch dimension is not specified, use the training dimensions
+            patch_dimension = self.img_res
+            
         imgs = []
         for img_path in batch_images:
             img = self.imread(img_path)
-            if not is_testing:
-                #img = scipy.misc.imresize(img, self.img_res)
-                img = self.get_random_patch(img)
-                                  
-                #if np.random.random() > 0.5:
-                #    img = np.fliplr(img)
-            else:
-                # this is for testing
-                
-                #img = scipy.misc.imresize(img, self.img_res)
-                img = self.get_random_patch(img, scale=1)
-                
+            img = self.get_random_patch(img, patch_dimension)   
             imgs.append(img)
 
         imgs = np.array(imgs)/127.5 - 1.
@@ -53,8 +57,9 @@ class DataLoader():
 
     def load_batch(self, batch_size=1, is_testing=False):
         data_type = "train" if not is_testing else "val"
-        path_A = glob(r'C:\Users\\Georgios\\Desktop\\4year project\\wespeDATA\\%s\\%sA\\*' % (self.dataset_name, data_type))
-        path_B = glob(r'C:\Users\\Georgios\\Desktop\\4year project\\wespeDATA\\%s\\%sB\\*' % (self.dataset_name, data_type))
+        main_path = r"C:\Users\\Georgios\\Desktop\\4year project\\wespeDATA"
+        path_A = glob(r'%s\\%s\\%sA\\*' % (main_path, self.dataset_name, data_type))
+        path_B = glob(r'%s\\%s\\%sB\\*' % (main_path, self.dataset_name, data_type))
 
         self.n_batches = int(min(len(path_A), len(path_B)) / batch_size)
         total_samples = self.n_batches * batch_size
@@ -74,9 +79,9 @@ class DataLoader():
 
                 #img_A = scipy.misc.imresize(img_A, self.img_res)
                 #img_B = scipy.misc.imresize(img_B, self.img_res)
-                
-                img_A=self.get_random_patch(img_A)
-                img_B=self.get_random_patch(img_B)
+                if (img_A.shape[0]>self.img_res[0]) or (img_A.shape[1]>self.img_res[1]):
+                    img_A=self.get_random_patch(img_A, patch_dimension = self.img_res)
+                    img_B=self.get_random_patch(img_B, patch_dimension = self.img_res)
 
                 #if not is_testing and np.random.random() > 0.5:
                 #        img_A = np.fliplr(img_A)
@@ -97,5 +102,5 @@ class DataLoader():
         return img[np.newaxis, :, :, :]
 
     def imread(self, path):
-        return scipy.misc.imread(path, mode='RGB').astype(np.float)
+        return plt.imread(path).astype(np.float)
 
