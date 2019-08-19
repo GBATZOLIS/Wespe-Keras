@@ -1,0 +1,377 @@
+from __future__ import print_function, division
+import scipy
+
+import keras.backend as K
+from keras.datasets import mnist
+from keras_contrib.layers.normalization.instancenormalization import InstanceNormalization
+from keras.layers import Input, Dense, Reshape, Flatten, Dropout, Concatenate
+from keras.layers import BatchNormalization, Activation, ZeroPadding2D
+from keras.layers.advanced_activations import LeakyReLU
+from keras.layers.convolutional import UpSampling2D, Conv2D
+from keras.models import Sequential, Model
+from keras.optimizers import Adam
+import datetime
+import matplotlib.pyplot as plt
+import sys
+from data_loader import DataLoader
+import numpy as np
+import os
+
+from keras.layers import Conv2D, MaxPooling2D, Input, Dense, GlobalAveragePooling2D,Flatten, BatchNormalization, LeakyReLU, Lambda, DepthwiseConv2D
+from keras.activations import relu,tanh,sigmoid
+from keras.initializers import glorot_normal
+from keras.models import Model
+from preprocessing import gauss_kernel, rgb2gray, NormalizeData
+from architectures import resblock
+
+#from loss_functions import vgg_loss
+from keras.applications.vgg19 import VGG19
+
+class CycleGAN():
+    def __init__(self):
+        # Input shape
+        self.img_rows = 64
+        self.img_cols = 64
+        self.channels = 3
+        self.img_shape = (self.img_rows, self.img_cols, self.channels)
+
+        # Configure data loader
+        self.dataset_name = "cycleGANtrial"
+        self.data_loader = DataLoader(dataset_name=self.dataset_name,
+                                      img_res=(self.img_rows, self.img_cols))
+        
+        #configure perceptual loss 
+        self.content_layer = 'block2_conv2'
+        
+        #set the blurring settings
+        self.kernel_size=21
+        self.std = 3
+        self.blur_kernel_weights = gauss_kernel(self.kernel_size, self.std, self.channels)
+        self.texture_weights = np.expand_dims(np.expand_dims(np.expand_dims(np.array([0.2989, 0.5870, 0.1140]), axis=0), axis=0), axis=-1)
+        print(self.texture_weights.shape)
+        
+        #set the optimiser
+        optimizer = Adam(0.0002, 0.5)
+        
+        # Build and compile the discriminators
+        
+        self.D_color = self.discriminator_network(name="Color_Discriminator", preprocess = "blur")
+        self.D_texture = self.discriminator_network(name="Texture_Discriminator", preprocess = "gray")
+        
+        
+        self.D_color.compile(loss='mse',
+            optimizer=optimizer,
+            metrics=['accuracy'])
+        
+        self.D_texture.compile(loss='mse',
+            optimizer=optimizer,
+            metrics=['accuracy'])
+
+        #-------------------------
+        # Construct Computational
+        #   Graph of Generators
+        #-------------------------
+
+        # Build the generators
+        self.G = self.generator_network(name = "Forward_Generator_G")
+        self.F = self.generator_network(name = "Backward_Generator_F")
+
+        # Input images from both domains
+        img_A = Input(shape=self.img_shape)
+        #img_B = Input(shape=self.img_shape)
+
+        # Translate images to the other domain
+        fake_B = self.G(img_A)
+        #fake_A = self.g_BA(img_B)
+        
+        # Translate images back to original domain
+        reconstr_A = self.F(fake_B)
+        #reconstr_B = self.g_AB(fake_A)
+        
+
+        # For the combined model we will only train the generators
+        self.D_color.trainable = False
+        self.D_texture.trainable = False
+
+        # Discriminators determines validity of translated images
+        valid_A_color = self.D_color(fake_B)
+        valid_A_texture = self.D_texture(fake_B)
+
+        # Combined model trains generators to fool discriminators
+        self.combined = Model(inputs=img_A,
+                              outputs=[valid_A_color, valid_A_texture, reconstr_A])
+        
+        
+        
+        self.combined.compile(loss=['mse', 'mse',
+                                    self.vgg_loss],
+                            loss_weights=[0.1, 0.05, 1],
+                            optimizer=optimizer)
+        
+        print(self.combined.summary())
+        
+        
+
+    def generator_network(self, name):
+        
+        image=Input(self.img_shape)
+        b1_in = Conv2D(64, (9,9), strides = 1, padding = 'SAME', name = 'CONV_1', activation = 'relu', kernel_initializer = glorot_normal())(image)
+        #b1_in = relu()(b1_in)
+        # residual blocks
+        b1_out = resblock(b1_in, 1)
+        b2_out = resblock(b1_out, 2)
+        b3_out = resblock(b2_out, 3)
+        b4_out = resblock(b3_out, 4)
+        
+        # conv. layers after residual blocks
+        temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_2', kernel_initializer=glorot_normal())(b4_out)
+        temp = Activation('relu')(temp)
+        
+        temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_3', kernel_initializer=glorot_normal())(b4_out)
+        temp = Activation('relu')(temp)
+        
+        temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_4', kernel_initializer=glorot_normal())(b4_out)
+        temp = Activation('relu')(temp)
+        
+        temp = Conv2D(3, (1,1) , strides = 1, padding = 'SAME', name = 'CONV_5', kernel_initializer=glorot_normal())(b4_out)
+        
+        return Model(inputs=image, outputs=temp, name=name)
+
+
+    def discriminator_network(self, name, preprocess = 'gray'):
+        
+        image = Input(self.img_shape)
+        
+        
+        if preprocess == 'gray':
+            #convert to grayscale image
+            print("Discriminator-texture")
+            
+            #output_shape=(image.shape[0], image.shape[1], 1)
+            gray_layer=Conv2D(1, (1,1), strides = 1, padding = "SAME", use_bias=False, name="Gray_layer")
+            image_processed=gray_layer(image)
+            gray_layer.set_weights([self.texture_weights])
+            gray_layer.trainable = False
+            
+            #image_processed=Lambda(rgb2gray, output_shape = output_gray_shape)(image)
+            #print(image_processed.shape)
+            #image_processed = rgb_to_grayscale(image)
+            
+        elif preprocess == 'blur':
+            print("Discriminator-color (blur)")
+            
+            g_layer = DepthwiseConv2D(self.kernel_size, use_bias=False, padding='same')
+            image_processed = g_layer(image)
+            
+            g_layer.set_weights([self.blur_kernel_weights])
+            g_layer.trainable = False
+
+            
+        else:
+            print("Discriminator-color (none)")
+            image_processed = image
+            
+        # conv layer 1 
+        temp = Conv2D(48, (11,11), strides = 4, padding = 'SAME', name = 'CONV_1', kernel_initializer = glorot_normal())(image_processed)
+        print(type(temp))
+        temp = LeakyReLU(alpha=0.3)(temp)
+        print(type(temp))
+        
+        # conv layer 2
+        temp = Conv2D(128, (5,5), strides = 2, padding = 'SAME', name = 'CONV_2', kernel_initializer = glorot_normal())(temp)
+        print(type(temp))
+        temp = LeakyReLU(alpha=0.3)(temp)
+        print(type(temp))
+        temp = BatchNormalization(name = "BN_1")(temp)
+        print(type(temp))
+        
+        # conv layer 3
+        temp = Conv2D(192, (3,3), strides = 1, padding = 'SAME', name = 'CONV_3', kernel_initializer = glorot_normal())(temp)
+        print(type(temp))
+        temp = LeakyReLU(alpha=0.3)(temp)
+        print(type(temp))
+        temp = BatchNormalization(name = "BN_2")(temp)
+        print(type(temp))
+        
+        # conv layer 4
+        temp = Conv2D(192, (3,3), strides = 1, padding = 'SAME', name = 'CONV_4', kernel_initializer = glorot_normal())(temp)
+        temp = LeakyReLU(alpha=0.3)(temp)
+        temp = BatchNormalization(name = "BN_3")(temp)
+        
+        
+        # conv layer 5
+        temp = Conv2D(128, (3,3), strides = 2, padding = 'SAME', name = 'CONV_5', kernel_initializer = glorot_normal())(temp)
+        temp = LeakyReLU(alpha=0.3)(temp)
+        temp = BatchNormalization(name = "BN_4")(temp)
+        print(temp.shape)
+        
+        
+        # FC layer 1
+        fc_in = Flatten()(temp)
+        
+        
+        fc_out = Dense(1024, activation="relu")(fc_in)
+        #fc_out = LeakyReLU(alpha=0.3)(fc_out)
+        
+        # FC layer 2
+        logits = Dense(1)(fc_out)
+        #probability = sigmoid(logits)
+        
+        return Model(inputs=image, outputs=logits, name=name)
+    
+    
+    def vgg_loss(self, y_true, y_pred):
+        
+        # Create a loss function based on VGG19 feature final feature map
+        
+        model = VGG19(include_top=False, input_shape=self.img_shape)
+        
+        #def loss(y_true, y_pred):  # Note the parameter order
+        #f_p = vggmodel.get_layer(self.content_layer)(y_pred)
+        #f_t = vggmodel.get_layer(self.content_layer)(y_true)
+        
+        #model = VGG19(include_top=False)
+        layer_name = 'block2_conv2'
+        intermediate_layer_model = Model(inputs=model.input,
+                                     outputs=model.get_layer(layer_name).output)
+        
+        f_p = intermediate_layer_model.predict(y_pred)
+        f_t = intermediate_layer_model.predict(y_true)
+    
+       
+        # Return a function
+        return K.mean(K.square(f_p - f_t)) 
+    
+    
+    """
+    def vgg_loss(self, y_true, y_pred):
+
+        # Create a loss function that adds the MSE loss to the mean of all squared activations of a specific layer
+        
+        model = VGG19(include_top=False)
+        #outputs_dict = dict([(layer.name, layer.output) for layer in model.layers])
+        
+        get_3rd_layer_output = K.function([model.layers[0].input],
+                                  [model.layers[3].output])
+        
+        f_p = get_3rd_layer_output([y_pred])[0]
+        f_t = get_3rd_layer_output([y_true])[0]
+        #f_p = vggmodel(y_pred)  
+        #f_t = vggmodel(y_true)  
+        
+        
+        return K.mean(K.square(f_p - f_t)) 
+    """
+
+    def train(self, epochs, batch_size=1, sample_interval=50):
+        
+        
+        start_time = datetime.datetime.now()
+
+        # Adversarial loss ground truths
+        valid = np.ones((batch_size,1))
+        fake = np.zeros((batch_size,1))
+
+        for epoch in range(epochs):
+            for batch_i, (imgs_A, imgs_B) in enumerate(self.data_loader.load_batch(batch_size)):
+
+                # ----------------------
+                #  Train Discriminators
+                # ----------------------
+
+                # Translate images to opposite domain
+                fake_B = self.G.predict(imgs_A)
+                #fake_A = self.g_BA.predict(imgs_B)
+
+                # Train the discriminators (original images = real / translated = Fake)
+                dcolor_loss_real = self.D_color.train_on_batch(imgs_B, valid)
+                dcolor_loss_fake = self.D_color.train_on_batch(fake_B, fake)
+                dcolor_loss = 0.5 * np.add(dcolor_loss_real, dcolor_loss_fake)
+
+                dtexture_loss_real = self.D_texture.train_on_batch(imgs_B, valid)
+                dtexture_loss_fake = self.D_texture.train_on_batch(fake_B, fake)
+                dtexture_loss = 0.5 * np.add(dtexture_loss_real, dtexture_loss_fake)
+
+                # Total disciminator loss
+                d_loss = 0.5 * np.add(dcolor_loss, dtexture_loss)
+
+
+                # ------------------
+                #  Train Generators
+                # ------------------
+
+                # Train the generators
+                g_loss = self.combined.train_on_batch(imgs_A, [valid, valid,
+                                                        imgs_A])
+
+                elapsed_time = datetime.datetime.now() - start_time
+
+                # Plot the progress
+                print ("[Epoch %d/%d] [Batch %d/%d] [D loss: %f, acc: %3d%%] [G loss: %05f, adv: %05f, recon: %05f] time: %s " \
+                                                                        % ( epoch, epochs,
+                                                                            batch_i, self.data_loader.n_batches,
+                                                                            d_loss[0], 100*d_loss[1],
+                                                                            g_loss[0],
+                                                                            np.mean(g_loss[1:3]),
+                                                                            np.mean(g_loss[3]),
+                                                                            elapsed_time))
+
+                # If at save interval => save generated image samples
+                if batch_i % sample_interval == 0:
+                    self.sample_images(epoch, batch_i)
+
+    def sample_images(self, epoch, batch_i):
+        os.makedirs('images/%s' % self.dataset_name, exist_ok=True)
+        r, c = 1, 3
+
+        imgs_A = self.data_loader.load_data(domain="A", batch_size=1, is_testing=True)
+        
+        #imgs_B = self.data_loader.load_data(domain="B", batch_size=1, is_testing=True)
+
+        # Demo (for GIF)
+        #imgs_A = self.data_loader.load_img('datasets/apple2orange/testA/n07740461_1541.jpg')
+        #imgs_B = self.data_loader.load_img('datasets/apple2orange/testB/n07749192_4241.jpg')
+
+        # Translate images to the other domain
+        fake_B = self.G.predict(imgs_A)
+        
+        #fake_A = self.g_BA.predict(imgs_B)
+        # Translate back to original domain
+        reconstr_A = self.F.predict(fake_B)
+        
+        #reconstr_B = self.g_AB.predict(fake_A)
+        
+        imgs_A = NormalizeData(imgs_A)
+        fake_B = NormalizeData(fake_B)
+        reconstr_A = NormalizeData(reconstr_A)
+        gen_imgs = np.concatenate([imgs_A, fake_B, reconstr_A])
+
+        # Rescale images 0 - 1
+        
+        #gen_imgs = 0.5 * gen_imgs + 0.5
+
+        titles = ['Original', 'Translated', 'Reconstructed']
+        fig, axs = plt.subplots(r, c)
+        cnt = 0
+        
+        for ax in axs.flat:
+            ax.imshow(gen_imgs[cnt])
+            ax.set_title(titles[cnt])
+            cnt += 1
+         
+        r"""
+        for i in range(r):
+            for j in range(c):
+                axs[i,j].imshow(gen_imgs[cnt])
+                axs[i, j].set_title(titles[j])
+                axs[i,j].axis('off')
+                cnt += 1
+        """
+        
+        fig.savefig("images/%s/%d_%d.png" % (self.dataset_name, epoch, batch_i))
+        plt.close()
+
+
+if __name__ == '__main__':
+    gan = CycleGAN()
+    gan.train(epochs=200, batch_size=2, sample_interval=200)
