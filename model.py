@@ -27,7 +27,7 @@ from architectures import resblock
 from loss_functions import  total_variation
 from keras.applications.vgg19 import VGG19
 
-class CycleGAN():
+class WespeGAN():
     def __init__(self):
         # Input shape
         self.img_rows = 64
@@ -335,5 +335,5 @@ class CycleGAN():
         
 
 if __name__ == '__main__':
-    gan = CycleGAN()
+    gan = WespeGAN()
     gan.train(epochs=200, batch_size=2, sample_interval=200)
