@@ -24,10 +24,10 @@ from keras.models import Model
 from preprocessing import gauss_kernel, rgb2gray, NormalizeData
 from architectures import resblock
 
-from loss_functions import vgg_loss
+from loss_functions import  total_variation
 from keras.applications.vgg19 import VGG19
 
-class WespeGAN():
+class CycleGAN():
     def __init__(self):
         # Input shape
         self.img_rows = 64
@@ -99,12 +99,12 @@ class WespeGAN():
 
         # Combined model trains generators to fool discriminators
         self.combined = Model(inputs=img_A,
-                              outputs=[valid_A_color, valid_A_texture, reconstr_A])
+                              outputs=[valid_A_color, valid_A_texture, reconstr_A, fake_B])
         
         
         
-        self.combined.compile(loss=['mse', 'mse', vgg_loss],
-                            loss_weights=[0.1, 0.05, 1],
+        self.combined.compile(loss=['mse', 'mse', self.vgg_loss, total_variation],
+                            loss_weights=[1, 0.2, 1, 0.001],
                             optimizer=optimizer)
         
         print(self.combined.summary())
@@ -218,29 +218,17 @@ class WespeGAN():
         
         return Model(inputs=image, outputs=logits, name=name)
     
-    r"""
+    
     def vgg_loss(self, y_true, y_pred):
         
-        # Create a loss function based on VGG19 feature final feature map
+        input_tensor = K.concatenate([y_true, y_pred], axis=0)
+        model = VGG19(input_tensor=input_tensor,weights='imagenet', include_top=False)
+        outputs_dict = dict([(layer.name, layer.output) for layer in model.layers])
+        layer_features = outputs_dict[self.content_layer]
+        y_true_features = layer_features[0, :, :, :]
+        y_pred_features = layer_features[1, :, :, :]
         
-        model = VGG19(include_top=False, input_shape=self.img_shape)
-        
-        #def loss(y_true, y_pred):  # Note the parameter order
-        #f_p = vggmodel.get_layer(self.content_layer)(y_pred)
-        #f_t = vggmodel.get_layer(self.content_layer)(y_true)
-        
-        #model = VGG19(include_top=False)
-        layer_name = 'block2_conv2'
-        intermediate_layer_model = Model(inputs=model.input,
-                                     outputs=model.get_layer(layer_name).output)
-        
-        f_p = intermediate_layer_model.predict(y_pred)
-        f_t = intermediate_layer_model.predict(y_true)
-    
-       
-        # Return a function
-        return K.mean(K.square(f_p - f_t)) 
-    """
+        return K.mean(K.square(y_true_features - y_pred_features)) 
 
     def train(self, epochs, batch_size=1, sample_interval=50):
         
@@ -281,18 +269,19 @@ class WespeGAN():
 
                 # Train the generators
                 g_loss = self.combined.train_on_batch(imgs_A, [valid, valid,
-                                                        imgs_A])
+                                                        imgs_A, imgs_A])
 
                 elapsed_time = datetime.datetime.now() - start_time
 
                 # Plot the progress
-                print ("[Epoch %d/%d] [Batch %d/%d] [D loss: %f, acc: %3d%%] [G loss: %05f, adv: %05f, recon: %05f] time: %s " \
+                print ("[Epoch %d/%d] [Batch %d/%d] [D loss: %f, D_color_loss: %f, D_texture_loss: %f acc: %3d%%] [G loss: %05f, adv: %05f, recon: %05f, TV: %05f] time: %s " \
                                                                         % ( epoch, epochs,
                                                                             batch_i, self.data_loader.n_batches,
-                                                                            d_loss[0], 100*d_loss[1],
+                                                                            d_loss[0], dcolor_loss[0], dtexture_loss[0], 100*d_loss[1],
                                                                             g_loss[0],
                                                                             np.mean(g_loss[1:3]),
                                                                             np.mean(g_loss[3]),
+                                                                            g_loss[4],
                                                                             elapsed_time))
 
                 # If at save interval => save generated image samples
@@ -346,5 +335,5 @@ class WespeGAN():
         
 
 if __name__ == '__main__':
-    gan = WespeGAN()
+    gan = CycleGAN()
     gan.train(epochs=200, batch_size=2, sample_interval=200)

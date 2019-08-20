@@ -9,4 +9,18 @@ def vgg_loss(y_true, y_pred):
     vggmodel = VGG19(include_top=False)
     f_p = vggmodel(y_pred)  
     f_t = vggmodel(y_true)  
-    return K.mean(K.square(f_p - f_t)) 
+    return K.mean(K.square(f_p - f_t))
+
+
+def total_variation(y_true, y_pred):
+    
+    x=y_pred
+    assert K.ndim(x) == 4
+    
+    img_nrows=x.shape[1]
+    img_ncols=x.shape[2]
+    
+    a = K.square(x[:, :img_nrows - 1, :img_ncols - 1, :] - x[:, 1:, :img_ncols - 1, :])
+    b = K.square(x[:, :img_nrows - 1, :img_ncols - 1, :] - x[:, :img_nrows - 1, 1:, :])
+    
+    return K.sum(K.pow(a + b, 1.25))
