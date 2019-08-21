@@ -27,12 +27,12 @@ def resblock(feature_in, num):
     
     return Add()([temp, feature_in])
 
-"""
-def generator_network(image, name):
+
+def generator_network(image_shape, name):
     
-    b1_in = Conv2D(64, (9,9), strides = 1, padding = 'SAME', name = 'CONV_1', kernel_initializer = glorot_normal())(image)
-    b1_in = relu()(b1_in)
-    
+    image = Input(image_shape)
+    b1_in = Conv2D(64, (9,9), strides = 1, padding = 'SAME', name = 'CONV_1', activation = 'relu', kernel_initializer = glorot_normal())(image)
+    #b1_in = relu()(b1_in)
     # residual blocks
     b1_out = resblock(b1_in, 1)
     b2_out = resblock(b1_out, 2)
@@ -41,13 +41,13 @@ def generator_network(image, name):
     
     # conv. layers after residual blocks
     temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_2', kernel_initializer=glorot_normal())(b4_out)
-    temp = relu()(temp)
+    temp = Activation('relu')(temp)
     
     temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_3', kernel_initializer=glorot_normal())(b4_out)
-    temp = relu()(temp)
+    temp = Activation('relu')(temp)
     
     temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_4', kernel_initializer=glorot_normal())(b4_out)
-    temp = relu()(temp)
+    temp = Activation('relu')(temp)
     
     temp = Conv2D(3, (1,1) , strides = 1, padding = 'SAME', name = 'CONV_5', kernel_initializer=glorot_normal())(b4_out)
     
@@ -135,12 +135,3 @@ def discriminator_network(name, preprocess = 'gray'):
         probability = sigmoid(logits)
         
         return Model(inputs=image, outputs=probability, name=name)
-    
-
-discriminator = discriminator_network(name = "discriminator", preprocess = 'gray')
-discriminator.summary()
-"""
-
-    
-    
-            

@@ -1,6 +1,14 @@
 
 import keras.backend as K
 from keras.applications.vgg19 import VGG19
+import tensorflow as tf
+
+def binary_crossentropy(y_true, y_pred):
+    #the input tensors are expected to be logits (not passed through softmax)
+    return tf.nn.sigmoid_cross_entropy_with_logits(labels=y_true,
+                                                   logits=y_pred)
+    
+    
 # Define custom loss
 def vgg_loss(y_true, y_pred):
 

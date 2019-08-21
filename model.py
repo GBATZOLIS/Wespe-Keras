@@ -3,7 +3,6 @@ import scipy
 
 import keras.backend as K
 from keras.datasets import mnist
-from keras_contrib.layers.normalization.instancenormalization import InstanceNormalization
 from keras.layers import Input, Dense, Reshape, Flatten, Dropout, Concatenate
 from keras.layers import BatchNormalization, Activation, ZeroPadding2D
 from keras.layers.advanced_activations import LeakyReLU
@@ -24,7 +23,7 @@ from keras.models import Model
 from preprocessing import gauss_kernel, rgb2gray, NormalizeData
 from architectures import resblock
 
-from loss_functions import  total_variation
+from loss_functions import  total_variation, binary_crossentropy
 from keras.applications.vgg19 import VGG19
 
 class WespeGAN():
@@ -36,12 +35,13 @@ class WespeGAN():
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
 
         # Configure data loader
+        self.main_path = "C:\\Users\\Georgios\\Desktop\\4year project\\wespeDATA"
         self.dataset_name = "cycleGANtrial"
-        self.data_loader = DataLoader(dataset_name=self.dataset_name,
+        self.data_loader = DataLoader(dataset_name=self.dataset_name, main_path = self.main_path,
                                       img_res=(self.img_rows, self.img_cols))
         
         #configure perceptual loss 
-        self.content_layer = 'block2_conv2'
+        self.content_layer = 'block1_conv2'
         
         #set the blurring settings
         self.kernel_size=21
@@ -59,13 +59,9 @@ class WespeGAN():
         self.D_texture = self.discriminator_network(name="Texture_Discriminator", preprocess = "gray")
         
         
-        self.D_color.compile(loss='mse',
-            optimizer=optimizer,
-            metrics=['accuracy'])
+        self.D_color.compile(loss=binary_crossentropy, optimizer=optimizer, metrics=['accuracy'])
         
-        self.D_texture.compile(loss='mse',
-            optimizer=optimizer,
-            metrics=['accuracy'])
+        self.D_texture.compile(loss=binary_crossentropy, optimizer=optimizer, metrics=['accuracy'])
 
         #-------------------------
         # Construct Computational
@@ -77,7 +73,7 @@ class WespeGAN():
         self.F = self.generator_network(name = "Backward_Generator_F")
 
         # Input images from both domains
-        img_A = Input(shape=self.img_shape)
+        img_A = Input((None, None, 3))
         #img_B = Input(shape=self.img_shape)
 
         # Translate images to the other domain
@@ -103,8 +99,8 @@ class WespeGAN():
         
         
         
-        self.combined.compile(loss=['mse', 'mse', self.vgg_loss, total_variation],
-                            loss_weights=[1, 0.2, 1, 0.001],
+        self.combined.compile(loss=[binary_crossentropy, binary_crossentropy, self.vgg_loss, total_variation],
+                            loss_weights=[20, 3, 0.1, 1/400],
                             optimizer=optimizer)
         
         print(self.combined.summary())
@@ -288,7 +284,8 @@ class WespeGAN():
                 if batch_i % sample_interval == 0:
                     print("Epoch: {} --- Batch: {} ---- saved".format(epoch, batch_i))
                     self.sample_images(epoch, batch_i)
-
+                    self.G.save("C:\\Users\\Georgios\\Desktop\\4year project\\code\\Wespe-Keras\\models\\{}_{}.h5".format(epoch, batch_i))
+    
     def sample_images(self, epoch, batch_i):
         os.makedirs('images/%s' % self.dataset_name, exist_ok=True)
         r, c = 1, 3

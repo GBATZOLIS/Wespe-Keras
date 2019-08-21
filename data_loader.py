@@ -11,34 +11,36 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class DataLoader():
-    def __init__(self, dataset_name, img_res=(128, 128)):
+    def __init__(self, dataset_name, main_path, img_res=(128, 128)):
         self.dataset_name = dataset_name
         self.img_res = img_res
+        self.main_path = main_path
         
     
     def get_random_patch(self, img, patch_dimension):
+        if img.shape[0]==patch_dimension[0] and img.shape[1]==patch_dimension[1]:
+            return img
         
-        image_shape=img.shape
-        
-        image_length = img.shape[0]
-        image_width = img.shape[1]
-        patch_length = patch_dimension[0]
-        patch_width = patch_dimension[1]
-        
-        if (image_length >= patch_length) and (image_width >= patch_width):
-            x_max=image_shape[0]-patch_dimension[0]
-            y_max=image_shape[1]-patch_dimension[1]
-            x_index=np.random.randint(x_max)
-            y_index=np.random.randint(y_max)
         else:
-            print("Error. Not valid patch dimensions")
-        
-        return img[x_index:x_index+patch_dimension[0], y_index:y_index+patch_dimension[1], :]
+            image_shape=img.shape
+            image_length = img.shape[0]
+            image_width = img.shape[1]
+            patch_length = patch_dimension[0]
+            patch_width = patch_dimension[1]
+            
+            if (image_length >= patch_length) and (image_width >= patch_width):
+                x_max=image_shape[0]-patch_dimension[0]
+                y_max=image_shape[1]-patch_dimension[1]
+                x_index=np.random.randint(x_max)
+                y_index=np.random.randint(y_max)
+            else:
+                print("Error. Not valid patch dimensions")
+            
+            return img[x_index:x_index+patch_dimension[0], y_index:y_index+patch_dimension[1], :]
         
     def load_data(self, domain, patch_dimension=None, batch_size=1, is_testing=False):
         data_type = r"train%s" % domain if not is_testing else "test%s" % domain
-        main_path = r"C:\Users\\Georgios\\Desktop\\4year project\\wespeDATA"
-        path = glob(r'%s\\%s\\%s\\*' % (main_path, self.dataset_name, data_type))
+        path = glob(r'%s\\%s\\%s\\*' % (self.main_path, self.dataset_name, data_type))
         batch_images = np.random.choice(path, size=batch_size)
         
         if patch_dimension==None:
@@ -57,9 +59,8 @@ class DataLoader():
 
     def load_batch(self, batch_size=1, is_testing=False):
         data_type = "train" if not is_testing else "val"
-        main_path = r"C:\Users\\Georgios\\Desktop\\4year project\\wespeDATA"
-        path_A = glob(r'%s\\%s\\%sA\\*' % (main_path, self.dataset_name, data_type))
-        path_B = glob(r'%s\\%s\\%sB\\*' % (main_path, self.dataset_name, data_type))
+        path_A = glob(r'%s\\%s\\%sA\\*' % (self.main_path, self.dataset_name, data_type))
+        path_B = glob(r'%s\\%s\\%sB\\*' % (self.main_path, self.dataset_name, data_type))
 
         self.n_batches = int(min(len(path_A), len(path_B)) / batch_size)
         total_samples = self.n_batches * batch_size
