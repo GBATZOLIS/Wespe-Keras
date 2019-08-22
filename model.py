@@ -27,10 +27,10 @@ from loss_functions import  total_variation, binary_crossentropy
 from keras.applications.vgg19 import VGG19
 
 class WespeGAN():
-    def __init__(self):
+    def __init__(self, patch_size=(100,100)):
         # Input shape
-        self.img_rows = 64
-        self.img_cols = 64
+        self.img_rows = patch_size[0]
+        self.img_cols = patch_size[1]
         self.channels = 3
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
 
@@ -332,5 +332,5 @@ class WespeGAN():
         
 
 if __name__ == '__main__':
-    gan = WespeGAN()
+    gan = WespeGAN(patch_size=(64,64))
     gan.train(epochs=200, batch_size=2, sample_interval=200)
