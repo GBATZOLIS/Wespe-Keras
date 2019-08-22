@@ -11,10 +11,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class DataLoader():
-    def __init__(self, dataset_name, main_path, img_res=(128, 128)):
-        self.dataset_name = dataset_name
+    def __init__(self, img_res=(128, 128)):
+        #self.dataset_name = dataset_name
         self.img_res = img_res
-        self.main_path = main_path
+        #self.main_path = main_path
         
     
     def get_random_patch(self, img, patch_dimension):
@@ -40,7 +40,7 @@ class DataLoader():
         
     def load_data(self, domain, patch_dimension=None, batch_size=1, is_testing=False):
         data_type = r"train%s" % domain if not is_testing else "test%s" % domain
-        path = glob(r'%s\\%s\\%s\\*' % (self.main_path, self.dataset_name, data_type))
+        path = glob(r'data\\%s\\*' % (data_type))
         batch_images = np.random.choice(path, size=batch_size)
         
         if patch_dimension==None:
@@ -59,8 +59,8 @@ class DataLoader():
 
     def load_batch(self, batch_size=1, is_testing=False):
         data_type = "train" if not is_testing else "val"
-        path_A = glob(r'%s\\%s\\%sA\\*' % (self.main_path, self.dataset_name, data_type))
-        path_B = glob(r'%s\\%s\\%sB\\*' % (self.main_path, self.dataset_name, data_type))
+        path_A = glob(r'data\\%sA\\*' % (data_type))
+        path_B = glob(r'data\\%sB\\*' % (data_type))
 
         self.n_batches = int(min(len(path_A), len(path_B)) / batch_size)
         total_samples = self.n_batches * batch_size

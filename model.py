@@ -35,10 +35,9 @@ class WespeGAN():
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
 
         # Configure data loader
-        self.main_path = "C:\\Users\\Georgios\\Desktop\\4year project\\wespeDATA"
-        self.dataset_name = "cycleGANtrial"
-        self.data_loader = DataLoader(dataset_name=self.dataset_name, main_path = self.main_path,
-                                      img_res=(self.img_rows, self.img_cols))
+        #self.main_path = "C:\\Users\\Georgios\\Desktop\\4year project\\wespeDATA"
+        #self.dataset_name = "cycleGANtrial"
+        self.data_loader = DataLoader(img_res=(self.img_rows, self.img_cols))
         
         #configure perceptual loss 
         self.content_layer = 'block1_conv2'
@@ -73,7 +72,7 @@ class WespeGAN():
         self.F = self.generator_network(name = "Backward_Generator_F")
 
         # Input images from both domains
-        img_A = Input((None, None, 3))
+        img_A = Input(shape=self.img_shape)
         #img_B = Input(shape=self.img_shape)
 
         # Translate images to the other domain
@@ -287,7 +286,6 @@ class WespeGAN():
                     self.G.save("C:\\Users\\Georgios\\Desktop\\4year project\\code\\Wespe-Keras\\models\\{}_{}.h5".format(epoch, batch_i))
     
     def sample_images(self, epoch, batch_i):
-        os.makedirs('images/%s' % self.dataset_name, exist_ok=True)
         r, c = 1, 3
 
         imgs_A = self.data_loader.load_data(domain="A", batch_size=10, is_testing=True)
@@ -317,7 +315,7 @@ class WespeGAN():
             
             #gen_imgs = 0.5 * gen_imgs + 0.5
     
-            titles = ['Original', 'Translated', 'Reconstructed']
+            titles = ['Original(A)', 'Enhanced(B)', 'Reconstructed(A)']
             fig, axs = plt.subplots(r, c)
             cnt = 0
             
@@ -328,7 +326,8 @@ class WespeGAN():
             
              
             
-            fig.savefig("images/%s/%d_%d_%d.png" % (self.dataset_name, epoch, batch_i, i))
+            fig.savefig("generated_images/%d_%d_%d.png" % (epoch, batch_i, i))
+            
         plt.close()
         
 
