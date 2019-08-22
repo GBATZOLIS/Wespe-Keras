@@ -226,6 +226,7 @@ class WespeGAN():
         return K.mean(K.square(y_true_features - y_pred_features)) 
 
     def train(self, epochs, batch_size=1, sample_interval=50):
+        #every sample_interval batches, the model is saved and sample images are generated and saved
         
         
         start_time = datetime.datetime.now()
@@ -283,7 +284,7 @@ class WespeGAN():
                 if batch_i % sample_interval == 0:
                     print("Epoch: {} --- Batch: {} ---- saved".format(epoch, batch_i))
                     self.sample_images(epoch, batch_i)
-                    self.G.save("C:\\Users\\Georgios\\Desktop\\4year project\\code\\Wespe-Keras\\models\\{}_{}.h5".format(epoch, batch_i))
+                    self.G.save("models/{}_{}.h5".format(epoch, batch_i))
     
     def sample_images(self, epoch, batch_i):
         r, c = 1, 3
@@ -332,5 +333,10 @@ class WespeGAN():
         
 
 if __name__ == '__main__':
-    gan = WespeGAN(patch_size=(64,64))
-    gan.train(epochs=200, batch_size=2, sample_interval=200)
+    patch_size=(64,64)
+    epochs=10
+    batch_size=2
+    sample_interval = 200 #after sample_interval batches save the model and generate sample images
+    
+    gan = WespeGAN(patch_size=patch_size)
+    gan.train(epochs=epochs, batch_size=batch_size, sample_interval=sample_interval)
