@@ -333,10 +333,10 @@ class WespeGAN():
         
 
 if __name__ == '__main__':
-    patch_size=(64,64)
-    epochs=10
-    batch_size=2
-    sample_interval = 200 #after sample_interval batches save the model and generate sample images
+    patch_size=(100,100)
+    epochs=50
+    batch_size=30
+    sample_interval = 400 #after sample_interval batches save the model and generate sample images
     
     gan = WespeGAN(patch_size=patch_size)
     gan.train(epochs=epochs, batch_size=batch_size, sample_interval=sample_interval)
