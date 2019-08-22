@@ -325,6 +325,7 @@ class WespeGAN():
                 ax.imshow(gen_imgs[cnt])
                 ax.set_title(titles[cnt])
                 cnt += 1
+            
              
             
             fig.savefig("images/%s/%d_%d_%d.png" % (self.dataset_name, epoch, batch_i, i))
