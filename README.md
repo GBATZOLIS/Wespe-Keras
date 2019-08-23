@@ -14,8 +14,6 @@ Steps to run the training:
 
 ##Preliminary experiments/results
 
-Visual results after 1 and 2 epochs (about 1.5h of training time in GTX 2080-ti)
-
-![sample image after 1 epoch](https://github.com/GBATZOLIS/Wespe-Keras/tree/master/sample%20images/1_4000_0.png)
+Visual results after 1 and 2 epochs (about 1.5h of training time in GTX 2080-ti) are saved in the folder "sample images"
 
 
