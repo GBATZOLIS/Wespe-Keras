@@ -12,3 +12,10 @@ Steps to run the training:
 * Put the training and test data of domains A and B under the folders data/trainA, data/trainB, data/testA and data/testB
 * run the model.py file (you can change the patch size, epochs, batch_size and other parameters in the main)
 
+##Preliminary experiments/results
+
+Visual results after 1 and 2 epochs (about 1.5h of training time in GTX 2080-ti)
+
+![alt text](https://github.com/GBATZOLIS/Wespe-Keras/tree/master/sample%20images/1_4000_0.png)
+
+
