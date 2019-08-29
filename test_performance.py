@@ -11,41 +11,49 @@ import numpy as np
 from architectures import generator_network
 import matplotlib.pyplot as plt
 from preprocessing import NormalizeData
-#this file is used to test the performance of a saved generator model
+#from skimage.measure import compare_ssim as ssim
 
-main_path = "C:\\Users\\Georgios\\Desktop\\4year project\\wespeDATA"
-data_loader = DataLoader("cycleGANtrial", main_path)
-
-imgs=data_loader.load_data(domain="A", batch_size=10, patch_dimension = (100,100), is_testing=True)
-print(imgs.shape)
-imgs_tensor = K.variable(imgs)
-
-#load the model
-generator = generator_network(imgs[0].shape, name = "Test_Generator")
-
-model_path="C:\\Users\\Georgios\\Desktop\\4year project\\code\\Wespe-Keras\\models\\1_6600.h5"
-generator.load_weights(model_path)
-
-
-for i in range(imgs.shape[0]):
-    image=np.expand_dims(imgs[i,:,:,:], axis=0)
-    fake_B_image = generator.predict(image)
-    fake_B_image = NormalizeData(fake_B_image[0])
-    #plt.figure()
-    original = NormalizeData(imgs[i,:,:,:])
-    #plt.imshow(original)
-    #plt.figure()
-    #plt.imshow(fake_B_image)
+class evaluator(object):
     
-    both_images=np.concatenate([original, fake_B_image])
-    titles = ['domain RGB', 'domain DSLR']
-    fig, axs = plt.subplots(1, 2, figsize=(6,8))
+    def __init__(self, model_name, img_shape=(100, 100, 3)):
+        
+        self.data_loader = DataLoader()
+        self.model_name = model_name
+        self.generator = generator_network(img_shape, name="Test_Gen")
+        self.generator.load_weights("models/%s" % (model_name))
     
-    j=0
-    for ax in axs.flat:
-        ax.imshow(both_images[j])
-        ax.set_title(titles[j])
-        j += 1
-    
-    fig.savefig("%s.png" % (i))
+    def perceptual_test(self, batch_size):
+        phone_imgs, dslr_imgs = self.data_loader.load_paired_data(batch_size=batch_size)
+        
+        fake_dslr_images = self.generator.predict(phone_imgs)
+        
+        i=0
+        for phone, fake_dslr, real_dslr in zip(phone_imgs, fake_dslr_images, dslr_imgs):
+            phone = NormalizeData(phone)
+            phone = np.expand_dims(phone, axis=0)
+            fake_dslr = NormalizeData(fake_dslr)
+            fake_dslr = np.expand_dims(fake_dslr, axis=0)
+            real_dslr = NormalizeData(real_dslr)
+            real_dslr = np.expand_dims(real_dslr, axis=0)
+            
+            
+            all_imgs = np.concatenate([phone, fake_dslr, real_dslr])
+            titles = ['phone', 'fake DSLR ', 'real DSLR']
+            fig, axs = plt.subplots(1, 3, figsize=(6,8))
+            
+            j=0
+            for ax in axs.flat:
+                ax.imshow(all_imgs[j])
+                ax.set_title(titles[j])
+                j += 1
+            
+            fig.savefig("generated_images/test%s.png" % (i))
+            
+            i+=1
+            
+        print("Perceptual results have been generated")
+            
+
+new_eval = evaluator(model_name="0_400.h5")
+new_eval.perceptual_test(10)
     

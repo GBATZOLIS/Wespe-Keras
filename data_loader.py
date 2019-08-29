@@ -11,7 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class DataLoader():
-    def __init__(self, img_res=(128, 128)):
+    def __init__(self, img_res=(100, 100)):
         #self.dataset_name = dataset_name
         self.img_res = img_res
         #self.main_path = main_path
@@ -56,6 +56,42 @@ class DataLoader():
         imgs = np.array(imgs)/127.5 - 1.
 
         return imgs
+    
+    def load_paired_data(self, batch_size=None, is_testing=True):
+        if is_testing:
+            phone_paths = glob('data/testA/*')
+            dslr_paths = glob('data/testB/*')
+        else:
+            phone_paths = glob('data/trainA/*')
+            dslr_paths = glob('data/trainB/*')
+            
+        if batch_size:
+            random_indices = np.random.choice(len(phone_paths), batch_size)
+            phone_paths = [phone_paths[index] for index in random_indices]
+            dslr_paths = [dslr_paths[index] for index in random_indices]
+        
+        
+        phone_imgs=[]
+        dslr_imgs=[]
+        for phone_path, dslr_path in zip(phone_paths, dslr_paths):
+            phone_img = self.imread(phone_path)
+            phone_imgs.append(phone_img)
+            dslr_img = self.imread(dslr_path)
+            dslr_imgs.append(dslr_img)
+        
+        phone_imgs = np.array(phone_imgs)/127.5 - 1.
+        dslr_imgs = np.array(dslr_imgs)/127.5 - 1.
+        
+        return phone_imgs, dslr_imgs
+        
+                
+                
+                
+            
+            
+            
+        
+        
 
     def load_batch(self, batch_size=1, is_testing=False):
         data_type = "train" if not is_testing else "val"
@@ -70,7 +106,7 @@ class DataLoader():
         path_A = np.random.choice(path_A, total_samples, replace=False)
         path_B = np.random.choice(path_B, total_samples, replace=False)
 
-        for i in range(self.n_batches-1):
+        for i in range(self.n_batches):
             batch_A = path_A[i*batch_size:(i+1)*batch_size]
             batch_B = path_B[i*batch_size:(i+1)*batch_size]
             imgs_A, imgs_B = [], []

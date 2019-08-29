@@ -1,14 +1,23 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Aug 23 15:03:47 2019
+
+@author: Georgios
+"""
+
+#Unsupervised single image super-resolution
+
 from __future__ import print_function, division
 import scipy
 
 import keras.backend as K
 from keras.datasets import mnist
-from keras.layers import Input, Dense, Reshape, Flatten, Dropout, Concatenate
-from keras.layers import BatchNormalization, Activation, ZeroPadding2D
-from keras.layers.advanced_activations import LeakyReLU
+from keras.layers import *
+from keras.layers.advanced_activations import *
 from keras.layers.convolutional import UpSampling2D, Conv2D
 from keras.models import Sequential, Model
 from keras.optimizers import Adam
+from keras.initializers import RandomNormal
 import datetime
 import matplotlib.pyplot as plt
 import sys
@@ -23,10 +32,10 @@ from keras.models import Model
 from preprocessing import gauss_kernel, rgb2gray, NormalizeData
 from architectures import resblock
 
-from loss_functions import  total_variation, binary_crossentropy, vgg_loss
+from loss_functions import  total_variation, binary_crossentropy
 from keras.applications.vgg19 import VGG19
 
-class WespeGAN():
+class USISR():
     def __init__(self, patch_size=(100,100)):
         # Input shape
         self.img_rows = patch_size[0]
@@ -50,7 +59,7 @@ class WespeGAN():
         print(self.texture_weights.shape)
         
         #set the optimiser
-        optimizer = Adam(0.001)
+        optimizer = Adam(0.0002, 0.5)
         
         # Build and compile the discriminators
         
@@ -98,39 +107,57 @@ class WespeGAN():
         
         
         
-        self.combined.compile(loss=[binary_crossentropy, binary_crossentropy, vgg_loss, total_variation],
-                            loss_weights=[20, 3, .1, 1/400],
+        self.combined.compile(loss=[binary_crossentropy, binary_crossentropy, self.vgg_loss, total_variation],
+                            loss_weights=[20, 3, 0.1, 1/400],
                             optimizer=optimizer)
         
         print(self.combined.summary())
         
         
-
     def generator_network(self, name):
         
+        g_init = RandomNormal(mean=1.0, stddev=0.02, seed=None)
+        W_init = RandomNormal(mean=0.0, stddev=0.02, seed=None)
+        
         image=Input(self.img_shape)
-        b1_in = Conv2D(64, (9,9), strides = 1, padding = 'SAME', name = 'CONV_1', activation = 'relu', kernel_initializer = glorot_normal())(image)
-        #b1_in = relu()(b1_in)
-        # residual blocks
-        b1_out = resblock(b1_in, 1)
-        b2_out = resblock(b1_out, 2)
-        b3_out = resblock(b2_out, 3)
-        b4_out = resblock(b3_out, 4)
+        n = Conv2D(64, (3, 3), strides = 1, activation='relu', padding='SAME', kernel_initializer=W_init)(image)
+        temp = n
+    
+        # B residual blocks
+        for i in range(16):
+            nn = Conv2D(64, (3, 3), strides = 1, activation='relu', padding='SAME', kernel_initializer=W_init)(n)
+            nn = BatchNormalization(gamma_initializer=g_init)(nn)
+            nn = Conv2D(64, (3, 3), strides = 1, padding='SAME', kernel_initializer=W_init)(nn)
+            nn = BatchNormalization(gamma_initializer=g_init)(nn)
+            nn = Add()([n, nn])
+            n = nn
+    
+        n = Conv2D(64, (3, 3), strides = 1, padding='SAME', kernel_initializer=W_init)(n)
+        n = BatchNormalization(gamma_initializer=g_init)(n)
+        n = Add()([n, temp])
+        # B residual blacks end
+    
+        n = Conv2D(256, (3, 3), strides = 1, padding='SAME', kernel_initializer=W_init)(n)
+        n = UpSampling2D(size = 2)(n)
+        n = LeakyReLU(alpha=0.2)(n)
+    
+        n = UpSampling2D(size = 2)(n)
+        n = LeakyReLU(alpha=0.2)(n)
+    
+        nn = Conv2D(3, (1, 1), strides=1, padding='SAME', kernel_initializer=W_init)(n)
+        nn = Activation('tanh')(nn)
+        G = Model(inputs=image, outputs=nn, name=name)
         
-        # conv. layers after residual blocks
-        temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_2', kernel_initializer=glorot_normal())(b4_out)
-        temp = Activation('relu')(temp)
-        
-        temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_3', kernel_initializer=glorot_normal())(b4_out)
-        temp = Activation('relu')(temp)
-        
-        temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_4', kernel_initializer=glorot_normal())(b4_out)
-        temp = Activation('relu')(temp)
-        
-        temp = Conv2D(3, (1,1) , strides = 1, padding = 'SAME', name = 'CONV_5', kernel_initializer=glorot_normal())(b4_out)
-        
-        return Model(inputs=image, outputs=temp, name=name)
+        return G
 
+    
+    def discriminator_block(self, model, filters, kernel_size, strides):
+    
+        model = Conv2D(filters = filters, kernel_size = kernel_size, strides = strides, padding = "same")(model)
+        model = BatchNormalization(momentum = 0.5)(model)
+        model = LeakyReLU(alpha = 0.2)(model)
+        
+        return model
 
     def discriminator_network(self, name, preprocess = 'gray'):
         
@@ -165,54 +192,40 @@ class WespeGAN():
             print("Discriminator-color (none)")
             image_processed = image
             
-        # conv layer 1 
-        temp = Conv2D(48, (11,11), strides = 4, padding = 'SAME', name = 'CONV_1', kernel_initializer = glorot_normal())(image_processed)
-        temp = LeakyReLU(alpha=0.2)(temp)
         
-        # conv layer 2
-        temp = Conv2D(128, (5,5), strides = 2, padding = 'SAME', name = 'CONV_2', kernel_initializer = glorot_normal())(temp)
-        #print(type(temp))
-        temp = LeakyReLU(alpha=0.2)(temp)
-        #print(type(temp))
-        temp = BatchNormalization(name = "BN_1")(temp)
-        #print(type(temp))
+        model = Conv2D(filters = 64, kernel_size = 3, strides = 1, padding = "same")(image_processed)
+        model = LeakyReLU(alpha = 0.2)(model)
         
-        # conv layer 3
-        temp = Conv2D(192, (3,3), strides = 1, padding = 'SAME', name = 'CONV_3', kernel_initializer = glorot_normal())(temp)
-        #print(type(temp))
-        temp = LeakyReLU(alpha=0.2)(temp)
-        #print(type(temp))
-        temp = BatchNormalization(name = "BN_2")(temp)
-        #print(type(temp))
+        model = self.discriminator_block(model, 64, 3, 2)
+        model = self.discriminator_block(model, 128, 3, 1)
+        model = self.discriminator_block(model, 128, 3, 2)
+        model = self.discriminator_block(model, 256, 3, 1)
+        model = self.discriminator_block(model, 256, 3, 2)
+        model = self.discriminator_block(model, 512, 3, 1)
+        model = self.discriminator_block(model, 512, 3, 2)
         
-        # conv layer 4
-        temp = Conv2D(192, (3,3), strides = 1, padding = 'SAME', name = 'CONV_4', kernel_initializer = glorot_normal())(temp)
-        temp = LeakyReLU(alpha=0.2)(temp)
-        temp = BatchNormalization(name = "BN_3")(temp)
+        model = Flatten()(model)
+        model = Dense(1024)(model)
+        model = LeakyReLU(alpha = 0.2)(model)
+       
+        model = Dense(1)(model)
+        model = Activation('sigmoid')(model) 
         
+        discriminator_model = Model(inputs = image, outputs = model)
         
-        # conv layer 5
-        temp = Conv2D(128, (3,3), strides = 2, padding = 'SAME', name = 'CONV_5', kernel_initializer = glorot_normal())(temp)
-        temp = LeakyReLU(alpha=0.2)(temp)
-        temp = BatchNormalization(name = "BN_4")(temp)
-        print(temp.shape)
-        
-        
-        # FC layer 1
-        fc_in = Flatten()(temp)
-        
-        
-        fc_out = Dense(1024, activation="relu")(fc_in)
-        #fc_out = LeakyReLU(alpha=0.3)(fc_out)
-        
-        # FC layer 2
-        logits = Dense(1)(fc_out)
-        #probability = sigmoid(logits)
-        
-        return Model(inputs=image, outputs=logits, name=name)
+        return discriminator_model
     
     
-    
+    def vgg_loss(self, y_true, y_pred):
+        
+        input_tensor = K.concatenate([y_true, y_pred], axis=0)
+        model = VGG19(input_tensor=input_tensor,weights='imagenet', include_top=False)
+        outputs_dict = dict([(layer.name, layer.output) for layer in model.layers])
+        layer_features = outputs_dict[self.content_layer]
+        y_true_features = layer_features[0, :, :, :]
+        y_pred_features = layer_features[1, :, :, :]
+        
+        return K.mean(K.square(y_true_features - y_pred_features)) 
 
     def train(self, epochs, batch_size=1, sample_interval=50):
         #every sample_interval batches, the model is saved and sample images are generated and saved
@@ -322,10 +335,10 @@ class WespeGAN():
         
 
 if __name__ == '__main__':
-    patch_size=(50, 50)
-    epochs=50
-    batch_size=20
-    sample_interval = 200 #after sample_interval batches save the model and generate sample images
+    patch_size=(32,32)
+    epochs=20
+    batch_size=1
+    sample_interval = 40 #after sample_interval batches save the model and generate sample images
     
-    gan = WespeGAN(patch_size=patch_size)
+    gan = USISR(patch_size=patch_size)
     gan.train(epochs=epochs, batch_size=batch_size, sample_interval=sample_interval)
