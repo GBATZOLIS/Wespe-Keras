@@ -17,41 +17,46 @@ from preprocessing import rgb2gray
 def resblock(feature_in, num):
     # subblock (conv. + BN + relu)
     temp =  Conv2D(64, (3, 3), strides = 1, padding = 'SAME', name = ('resblock_%d_CONV_1' %num), kernel_initializer = glorot_normal())(feature_in)
-    temp = BatchNormalization(name = ('resblock_%d_BN_1' %num))(temp)
+    #temp = BatchNormalization(name = ('resblock_%d_BN_1' %num))(temp)
     temp = Activation('relu')(temp)
         
     # subblock (conv. + BN + relu)
     temp =  Conv2D(64, (3, 3), strides = 1, padding = 'SAME', name = ('resblock_%d_CONV_2' %num), kernel_initializer = glorot_normal())(temp)
-    temp = BatchNormalization(name = ('resblock_%d_BN_2' %num))(temp)
+    #temp = BatchNormalization(name = ('resblock_%d_BN_2' %num))(temp)
     temp = Activation('relu')(temp)
     
     return Add()([temp, feature_in])
 
 
-def generator_network(image_shape, name):
-    
-    image = Input(image_shape)
-    b1_in = Conv2D(64, (9,9), strides = 1, padding = 'SAME', name = 'CONV_1', activation = 'relu', kernel_initializer = glorot_normal())(image)
-    #b1_in = relu()(b1_in)
-    # residual blocks
-    b1_out = resblock(b1_in, 1)
-    b2_out = resblock(b1_out, 2)
-    b3_out = resblock(b2_out, 3)
-    b4_out = resblock(b3_out, 4)
-    
-    # conv. layers after residual blocks
-    temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_2', kernel_initializer=glorot_normal())(b4_out)
-    temp = Activation('relu')(temp)
-    
-    temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_3', kernel_initializer=glorot_normal())(b4_out)
-    temp = Activation('relu')(temp)
-    
-    temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_4', kernel_initializer=glorot_normal())(b4_out)
-    temp = Activation('relu')(temp)
-    
-    temp = Conv2D(3, (1,1) , strides = 1, padding = 'SAME', name = 'CONV_5', kernel_initializer=glorot_normal())(b4_out)
-    
-    return Model(inputs=image, outputs=temp, name=name)
+def generator_network(img_shape, name):
+        
+        image=Input(img_shape)
+        
+        b1_in = Conv2D(64, (9,9), strides = 1, padding = 'SAME', name = 'CONV_1', activation = 'relu', kernel_initializer = glorot_normal())(image)
+        #b1_in = relu()(b1_in)
+        # residual blocks
+        b1_out = resblock(b1_in, 1)
+        b2_out = resblock(b1_out, 2)
+        b3_out = resblock(b2_out, 3)
+        b4_out = resblock(b3_out, 4)
+        
+        # conv. layers after residual blocks
+        temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_2', kernel_initializer=glorot_normal())(b4_out)
+        #temp = BatchNormalization()(temp)
+        temp = Activation('relu')(temp)
+        
+        temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_3', kernel_initializer=glorot_normal())(b4_out)
+        #temp = BatchNormalization()(temp)
+        temp = Activation('relu')(temp)
+        
+        temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_4', kernel_initializer=glorot_normal())(b4_out)
+        #temp = BatchNormalization()(temp)
+        temp = Activation('relu')(temp)
+        
+        temp = Conv2D(3, (9,9) , strides = 1, padding = 'SAME', name = 'CONV_5', kernel_initializer=glorot_normal())(b4_out)
+        #temp = Activation('tanh')(temp)
+        
+        return Model(inputs=image, outputs=temp, name=name)
 
 def discriminator_network(name, preprocess = 'gray'):
         

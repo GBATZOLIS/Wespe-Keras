@@ -13,13 +13,14 @@ def vgg_loss(y_true, y_pred):
     input_tensor = K.concatenate([y_true, y_pred], axis=0)
     model = VGG19(input_tensor=input_tensor,weights='imagenet', include_top=False)
     outputs_dict = dict([(layer.name, layer.output) for layer in model.layers])
-    layer_features = outputs_dict["block2_conv2"]
+    layer_features = outputs_dict["block2_conv1"]
     y_true_features = layer_features[0, :, :, :]
     y_pred_features = layer_features[1, :, :, :]
      
     return K.mean(K.square(y_true_features - y_pred_features)) 
 
 
+"""
 def total_variation(y_true, y_pred):
     
     images=y_pred
@@ -33,9 +34,9 @@ def total_variation(y_true, y_pred):
     sum_axis = [1, 2, 3]
     
     return (K.mean(a, axis = sum_axis)+K.mean(b, axis = sum_axis))
-
-
 """
+
+
 def total_variation(y_true, y_pred):
     
     x=y_pred
@@ -47,5 +48,7 @@ def total_variation(y_true, y_pred):
     a = K.square(x[:, :img_nrows - 1, :img_ncols - 1, :] - x[:, 1:, :img_ncols - 1, :])
     b = K.square(x[:, :img_nrows - 1, :img_ncols - 1, :] - x[:, :img_nrows - 1, 1:, :])
     
-    return K.sum(K.pow(a + b, 1.25))
-"""
+    #return K.sum(K.pow(a + b, 1.25))
+    return K.mean(a+b)
+
+    

@@ -53,11 +53,14 @@ class DataLoader():
             img = self.get_random_patch(img, patch_dimension)   
             imgs.append(img)
 
-        imgs = np.array(imgs)/127.5 - 1.
+        imgs = np.array(imgs)/255
 
         return imgs
     
     def load_paired_data(self, batch_size=None, is_testing=True):
+        #if batch_size = None, the entire test dataset is loaded.
+        #This is likely to cause memory issues. This needs to be resolved later
+        
         if is_testing:
             phone_paths = glob('data/testA/*')
             dslr_paths = glob('data/testB/*')
@@ -79,20 +82,11 @@ class DataLoader():
             dslr_img = self.imread(dslr_path)
             dslr_imgs.append(dslr_img)
         
-        phone_imgs = np.array(phone_imgs)/127.5 - 1.
-        dslr_imgs = np.array(dslr_imgs)/127.5 - 1.
+        phone_imgs = np.array(phone_imgs)/255
+        dslr_imgs = np.array(dslr_imgs)/255
         
         return phone_imgs, dslr_imgs
-        
-                
-                
-                
-            
-            
-            
-        
-        
-
+    
     def load_batch(self, batch_size=1, is_testing=False):
         data_type = "train" if not is_testing else "val"
         path_A = glob(r'data/%sA/*' % (data_type))
@@ -127,15 +121,15 @@ class DataLoader():
                 imgs_A.append(img_A)
                 imgs_B.append(img_B)
 
-            imgs_A = np.array(imgs_A)/127.5 - 1.
-            imgs_B = np.array(imgs_B)/127.5 - 1.
+            imgs_A = np.array(imgs_A)/255
+            imgs_B = np.array(imgs_B)/255
 
             yield imgs_A, imgs_B
 
     def load_img(self, path):
         img = self.imread(path)
         img = scipy.misc.imresize(img, self.img_res)
-        img = img/127.5 - 1.
+        img = img/255
         return img[np.newaxis, :, :, :]
 
     def imread(self, path):

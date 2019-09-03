@@ -1,6 +1,10 @@
 from __future__ import print_function, division
 import scipy
 
+from keras_contrib.layers.normalization.instancenormalization import InstanceNormalization
+# define layer
+#layer = InstanceNormalization(axis=-1)
+
 import keras.backend as K
 from keras.datasets import mnist
 from keras.layers import Input, Dense, Reshape, Flatten, Dropout, Concatenate
@@ -25,6 +29,10 @@ from architectures import resblock
 
 from loss_functions import  total_variation, binary_crossentropy, vgg_loss
 from keras.applications.vgg19 import VGG19
+from test_performance import evaluator
+
+from IPython import get_ipython
+get_ipython().run_line_magic('matplotlib', 'qt')
 
 class WespeGAN():
     def __init__(self, patch_size=(100,100)):
@@ -47,10 +55,10 @@ class WespeGAN():
         self.std = 3
         self.blur_kernel_weights = gauss_kernel(self.kernel_size, self.std, self.channels)
         self.texture_weights = np.expand_dims(np.expand_dims(np.expand_dims(np.array([0.2989, 0.5870, 0.1140]), axis=0), axis=0), axis=-1)
-        print(self.texture_weights.shape)
+        #print(self.texture_weights.shape)
         
         #set the optimiser
-        optimizer = Adam(0.001)
+        optimizer = Adam(0.0001, beta_1=0.5)
         
         # Build and compile the discriminators
         
@@ -73,10 +81,11 @@ class WespeGAN():
 
         # Input images from both domains
         img_A = Input(shape=self.img_shape)
-        #img_B = Input(shape=self.img_shape)
+        img_B = Input(shape=self.img_shape)
 
         # Translate images to the other domain
         fake_B = self.G(img_A)
+        identity_B = self.G(img_B)
         #fake_A = self.g_BA(img_B)
         
         # Translate images back to original domain
@@ -93,13 +102,13 @@ class WespeGAN():
         valid_A_texture = self.D_texture(fake_B)
 
         # Combined model trains generators to fool discriminators
-        self.combined = Model(inputs=img_A,
-                              outputs=[valid_A_color, valid_A_texture, reconstr_A, fake_B])
+        self.combined = Model(inputs=[img_A, img_B],
+                              outputs=[valid_A_color, valid_A_texture, reconstr_A, identity_B, fake_B])
         
         
         
-        self.combined.compile(loss=[binary_crossentropy, binary_crossentropy, vgg_loss, total_variation],
-                            loss_weights=[20, 3, .1, 1/400],
+        self.combined.compile(loss=[binary_crossentropy, binary_crossentropy, 'mae', 'mae', total_variation],
+                            loss_weights=[10, 5, 5, 2, 0.1],
                             optimizer=optimizer)
         
         print(self.combined.summary())
@@ -119,15 +128,19 @@ class WespeGAN():
         
         # conv. layers after residual blocks
         temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_2', kernel_initializer=glorot_normal())(b4_out)
+        #temp = BatchNormalization()(temp)
         temp = Activation('relu')(temp)
         
         temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_3', kernel_initializer=glorot_normal())(b4_out)
+        #temp = BatchNormalization()(temp)
         temp = Activation('relu')(temp)
         
         temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_4', kernel_initializer=glorot_normal())(b4_out)
+        #temp = BatchNormalization()(temp)
         temp = Activation('relu')(temp)
         
-        temp = Conv2D(3, (1,1) , strides = 1, padding = 'SAME', name = 'CONV_5', kernel_initializer=glorot_normal())(b4_out)
+        temp = Conv2D(3, (9,9) , strides = 1, padding = 'SAME', name = 'CONV_5', kernel_initializer=glorot_normal())(b4_out)
+        #temp = Activation('tanh')(temp)
         
         return Model(inputs=image, outputs=temp, name=name)
 
@@ -167,43 +180,34 @@ class WespeGAN():
             
         # conv layer 1 
         temp = Conv2D(48, (11,11), strides = 4, padding = 'SAME', name = 'CONV_1', kernel_initializer = glorot_normal())(image_processed)
+        temp = InstanceNormalization(axis=-1)(temp)
         temp = LeakyReLU(alpha=0.2)(temp)
         
         # conv layer 2
-        temp = Conv2D(128, (5,5), strides = 2, padding = 'SAME', name = 'CONV_2', kernel_initializer = glorot_normal())(temp)
-        #print(type(temp))
+        temp = Conv2D(96, (5,5), strides = 2, padding = 'SAME', name = 'CONV_2', kernel_initializer = glorot_normal())(temp)
+        temp = InstanceNormalization(axis=-1)(temp)
         temp = LeakyReLU(alpha=0.2)(temp)
-        #print(type(temp))
-        temp = BatchNormalization(name = "BN_1")(temp)
-        #print(type(temp))
         
         # conv layer 3
         temp = Conv2D(192, (3,3), strides = 1, padding = 'SAME', name = 'CONV_3', kernel_initializer = glorot_normal())(temp)
-        #print(type(temp))
+        temp = InstanceNormalization(axis=-1)(temp)
         temp = LeakyReLU(alpha=0.2)(temp)
-        #print(type(temp))
-        temp = BatchNormalization(name = "BN_2")(temp)
-        #print(type(temp))
         
         # conv layer 4
         temp = Conv2D(192, (3,3), strides = 1, padding = 'SAME', name = 'CONV_4', kernel_initializer = glorot_normal())(temp)
+        temp = InstanceNormalization(axis=-1)(temp)
         temp = LeakyReLU(alpha=0.2)(temp)
-        temp = BatchNormalization(name = "BN_3")(temp)
-        
         
         # conv layer 5
-        temp = Conv2D(128, (3,3), strides = 2, padding = 'SAME', name = 'CONV_5', kernel_initializer = glorot_normal())(temp)
+        temp = Conv2D(96, (3,3), strides = 2, padding = 'SAME', name = 'CONV_5', kernel_initializer = glorot_normal())(temp)
+        temp = InstanceNormalization(axis=-1)(temp)
         temp = LeakyReLU(alpha=0.2)(temp)
-        temp = BatchNormalization(name = "BN_4")(temp)
-        print(temp.shape)
-        
         
         # FC layer 1
         fc_in = Flatten()(temp)
         
-        
-        fc_out = Dense(1024, activation="relu")(fc_in)
-        #fc_out = LeakyReLU(alpha=0.3)(fc_out)
+        fc_out = Dense(1024)(fc_in)
+        fc_out = LeakyReLU(alpha=0.2)(fc_out)
         
         # FC layer 2
         logits = Dense(1)(fc_out)
@@ -219,113 +223,123 @@ class WespeGAN():
         
         
         start_time = datetime.datetime.now()
-
-        # Adversarial loss ground truths
-        valid = np.ones((batch_size,1))
-        fake = np.zeros((batch_size,1))
-
-        for epoch in range(epochs):
-            for batch_i, (imgs_A, imgs_B) in enumerate(self.data_loader.load_batch(batch_size)):
-
-                # ----------------------
-                #  Train Discriminators
-                # ----------------------
-
-                # Translate images to opposite domain
-                fake_B = self.G.predict(imgs_A)
-                #fake_A = self.g_BA.predict(imgs_B)
-
-                # Train the discriminators (original images = real / translated = Fake)
-                dcolor_loss_real = self.D_color.train_on_batch(imgs_B, valid)
-                dcolor_loss_fake = self.D_color.train_on_batch(fake_B, fake)
-                dcolor_loss = 0.5 * np.add(dcolor_loss_real, dcolor_loss_fake)
-
-                dtexture_loss_real = self.D_texture.train_on_batch(imgs_B, valid)
-                dtexture_loss_fake = self.D_texture.train_on_batch(fake_B, fake)
-                dtexture_loss = 0.5 * np.add(dtexture_loss_real, dtexture_loss_fake)
-
-                # Total disciminator loss
-                d_loss = 0.5 * np.add(dcolor_loss, dtexture_loss)
-
-
-                # ------------------
-                #  Train Generators
-                # ------------------
-
-                # Train the generators
-                g_loss = self.combined.train_on_batch(imgs_A, [valid, valid,
-                                                        imgs_A, imgs_A])
-
-                elapsed_time = datetime.datetime.now() - start_time
-
-                # Plot the progress
-                print ("[Epoch %d/%d] [Batch %d/%d] [D loss: %f, D_color_loss: %f, D_texture_loss: %f acc: %3d%%] [G loss: %05f, adv: %05f, recon: %05f, TV: %05f] time: %s " \
-                                                                        % ( epoch, epochs,
-                                                                            batch_i, self.data_loader.n_batches,
-                                                                            d_loss[0], dcolor_loss[0], dtexture_loss[0], 100*d_loss[1],
-                                                                            g_loss[0],
-                                                                            np.mean(g_loss[1:3]),
-                                                                            np.mean(g_loss[3]),
-                                                                            g_loss[4],
-                                                                            elapsed_time))
-
-                # If at save interval => save generated image samples
-                if batch_i % sample_interval == 0:
-                    print("Epoch: {} --- Batch: {} ---- saved".format(epoch, batch_i))
-                    self.sample_images(epoch, batch_i)
-                    self.G.save("models/{}_{}.h5".format(epoch, batch_i))
-    
-    def sample_images(self, epoch, batch_i):
-        r, c = 1, 3
-
-        imgs_A = self.data_loader.load_data(domain="A", batch_size=10, is_testing=True)
-        #print(imgs_A.shape)
-        #imgs_B = self.data_loader.load_data(domain="B", batch_size=1, is_testing=True)
         
         
-        for i in range(imgs_A.shape[0]):
+        
+        try:
             
-            image=np.expand_dims(imgs_A[i,:,:,:], axis=0)
-            # Translate images to the other domain
-            fake_B = self.G.predict(image)
+            # Adversarial loss ground truths
+            valid = np.ones((batch_size,1))
+            fake = np.zeros((batch_size,1))
             
-            #fake_A = self.g_BA.predict(imgs_B)
-            # Translate back to original domain
-            reconstr_A = self.F.predict(fake_B)
-            
-            #reconstr_B = self.g_AB.predict(fake_A)
-            
-            n_image = NormalizeData(image)
-            n_fake_B = NormalizeData(fake_B)
-            n_reconstr_A = NormalizeData(reconstr_A)
-            
-            gen_imgs = np.concatenate([n_image, n_fake_B, n_reconstr_A])
+            #instantiate the evaluator
+            performance_evaluator = evaluator(model=self.G, img_shape=self.img_shape)
     
-            # Rescale images 0 - 1
+            for epoch in range(epochs):
+                for batch_i, (imgs_A, imgs_B) in enumerate(self.data_loader.load_batch(batch_size)):
+                    
+                    
+                        
+                        # ----------------------
+                        #  Train Discriminators
+                        # ----------------------
+        
+                        # Translate images to opposite domain
+                        fake_B = self.G.predict(imgs_A)
+                        #fake_A = self.g_BA.predict(imgs_B)
+        
+                        # Train the discriminators (original images = real / translated = Fake)
+                        dcolor_loss_real = self.D_color.train_on_batch(imgs_B, valid)
+                        dcolor_loss_fake = self.D_color.train_on_batch(fake_B, fake)
+                        dcolor_loss = 0.5 * np.add(dcolor_loss_real, dcolor_loss_fake)
+        
+                        dtexture_loss_real = self.D_texture.train_on_batch(imgs_B, valid)
+                        dtexture_loss_fake = self.D_texture.train_on_batch(fake_B, fake)
+                        dtexture_loss = 0.5 * np.add(dtexture_loss_real, dtexture_loss_fake)
+        
+                        # Total disciminator loss
+                        d_loss = 0.5 * np.add(dcolor_loss, dtexture_loss)
+                        #d_loss = dcolor_loss
+        
+                        # ------------------
+                        #  Train Generators
+                        # ------------------
+        
+                        # Train the generators
+                        g_loss = self.combined.train_on_batch([imgs_A, imgs_B], [valid, valid,
+                                                                imgs_A, imgs_B, imgs_A])
+        
+                        elapsed_time = datetime.datetime.now() - start_time
+        
+                        # Plot the progress
+                        print ("[Epoch %d/%d] [Batch %d/%d] [D loss: %f, acc: %3d%%] [G loss: %05f, adv: %05f, recon: %05f, ID:%05f,  TV: %05f] time: %s " \
+                                                                                % ( epoch, epochs,
+                                                                                    batch_i, self.data_loader.n_batches,
+                                                                                    d_loss[0], 100*d_loss[1],
+                                                                                    g_loss[0],
+                                                                                    np.mean(g_loss[1:3]),
+                                                                                    g_loss[3],
+                                                                                    g_loss[4],
+                                                                                    g_loss[5],
+                                                                                    elapsed_time))
+        
+                        # If at save interval => save generated image samples
+                        if batch_i % sample_interval == 0:
+                            print("Epoch: {} --- Batch: {} ---- saved".format(epoch, batch_i))
+                            
+                            performance_evaluator.model = self.G
+                            performance_evaluator.epoch = epoch
+                            performance_evaluator.num_batch = batch_i
+                            
+                            performance_evaluator.perceptual_test(5) #generation of perceptual results
+                            
+                            mean_sample_ssim = performance_evaluator.objective_test(400) #metric based evaluation on test data
+                            
+                            performance_evaluator.ssim_vals.append(np.abs(np.around(mean_sample_ssim, decimals=3)))
+                            
+                            self.G.save("models/{}_{}.h5".format(epoch, batch_i))
+                            
+                            r"""
+                            if batch_i % (3*sample_interval) == sample_interval:
+                                db_ssim = performance_evaluator.objective_test()
+                                print("Test data mean SSIM -----%05f------ in (DB)" %(db_ssim))
+                            """
+                        if epoch<1:
+                            if batch_i % (2*sample_interval) == 0 and batch_i!=0:
+                                fig = plt.figure()
+                                ax = fig.add_subplot(1, 1, 1)
+                                num_values_saved=len(performance_evaluator.ssim_vals)
+                                ax.plot(np.arange(1, num_values_saved+1)*sample_interval, np.array(performance_evaluator.ssim_vals), color='blue')
+                                ax.plot(np.arange(1, num_values_saved+1)*sample_interval, np.ones(num_values_saved)*0.9, color = 'red')
+                                plt.title("mean sample SSIM vs number of batches")
+                                fig.savefig("progress/ssim_curve.png")
+                        
+                        
+        except KeyboardInterrupt:
+            end_time=datetime.datetime.now()
+            print("Training was interrupted after %s" %(end_time-start_time))
+            print("Training interruption details: epochs: {} --- batches: {}/{}".format(epoch, batch_i, self.data_loader.n_batches))
             
-            #gen_imgs = 0.5 * gen_imgs + 0.5
-    
-            titles = ['Original(A)', 'Enhanced(B)', 'Reconstructed(A)']
-            fig, axs = plt.subplots(r, c)
-            cnt = 0
+            total_mean_ssim = performance_evaluator.objective_test()
             
-            for ax in axs.flat:
-                ax.imshow(gen_imgs[cnt])
-                ax.set_title(titles[cnt])
-                cnt += 1
+            #print(performance_evaluator.ssim_vals)
+            plt.figure()
+            num_values_saved=len(performance_evaluator.ssim_vals)
+            plt.plot(np.arange(1, num_values_saved+1)*sample_interval, np.array(performance_evaluator.ssim_vals))
+            plt.title("mean sample SSIM vs number of batches")
+            plt.show()
             
-             
+            self.G.save("models/KeyboardInterrupt_{}_{}%.h5".format(epoch, int(batch_i/self.data_loader.n_batches*100)))
             
-            fig.savefig("generated_images/%d_%d_%d.png" % (epoch, batch_i, i))
-            
-        plt.close()
+            print("Report has been generated. Model has been saved.")
+                        
         
 
 if __name__ == '__main__':
-    patch_size=(50, 50)
+    patch_size=(100, 100)
     epochs=50
-    batch_size=20
-    sample_interval = 200 #after sample_interval batches save the model and generate sample images
+    batch_size=5
+    sample_interval = 50 #after sample_interval batches save the model and generate sample images
     
     gan = WespeGAN(patch_size=patch_size)
     gan.train(epochs=epochs, batch_size=batch_size, sample_interval=sample_interval)
