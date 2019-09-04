@@ -5,6 +5,8 @@ from keras_contrib.layers.normalization.instancenormalization import InstanceNor
 # define layer
 #layer = InstanceNormalization(axis=-1)
 
+import imageio #gif creation
+
 import keras.backend as K
 from keras.datasets import mnist
 from keras.layers import Input, Dense, Reshape, Flatten, Dropout, Concatenate
@@ -34,6 +36,10 @@ from test_performance import evaluator
 from IPython import get_ipython
 get_ipython().run_line_magic('matplotlib', 'qt')
 
+import warnings
+warnings.filterwarnings("ignore")
+
+
 class WespeGAN():
     def __init__(self, patch_size=(100,100)):
         # Input shape
@@ -41,7 +47,14 @@ class WespeGAN():
         self.img_cols = patch_size[1]
         self.channels = 3
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
-
+        
+        
+        #details for gif creation featuring the progress of the training.
+        self.gif_batch=10
+        self.gif_frames_per_sample_interval=10
+        self.gif_images = [[] for i in range(self.gif_batch)]
+        
+        
         # Configure data loader
         #self.main_path = "C:\\Users\\Georgios\\Desktop\\4year project\\wespeDATA"
         #self.dataset_name = "cycleGANtrial"
@@ -228,6 +241,8 @@ class WespeGAN():
         
         try:
             
+            gif_batch = self.data_loader.load_data(domain="A", batch_size = self.gif_batch, is_testing = True)
+            
             # Adversarial loss ground truths
             valid = np.ones((batch_size,1))
             fake = np.zeros((batch_size,1))
@@ -246,7 +261,13 @@ class WespeGAN():
         
                         # Translate images to opposite domain
                         fake_B = self.G.predict(imgs_A)
-                        #fake_A = self.g_BA.predict(imgs_B)
+                        
+                        #get 10 fake_gif_frames in sample_interval batches
+                        if batch_i % int(sample_interval/self.gif_frames_per_sample_interval)==0:
+                            fake_gif_batch = self.G.predict(gif_batch)
+                            for i in range(self.gif_batch):
+                                self.gif_images[i].append(fake_gif_batch[i])
+                        
         
                         # Train the discriminators (original images = real / translated = Fake)
                         dcolor_loss_real = self.D_color.train_on_batch(imgs_B, valid)
@@ -287,32 +308,50 @@ class WespeGAN():
                         if batch_i % sample_interval == 0:
                             print("Epoch: {} --- Batch: {} ---- saved".format(epoch, batch_i))
                             
+                            """update the attributes of the performance_evaluator class"""
                             performance_evaluator.model = self.G
                             performance_evaluator.epoch = epoch
                             performance_evaluator.num_batch = batch_i
                             
-                            performance_evaluator.perceptual_test(5) #generation of perceptual results
+                            """generation of perceptual results"""
+                            performance_evaluator.perceptual_test(5) 
                             
-                            mean_sample_ssim = performance_evaluator.objective_test(400) #metric based evaluation on test data
+                            """SSIM based evaluation on a batch of test data"""
+                            mean_sample_ssim = performance_evaluator.objective_test(100) 
                             
-                            performance_evaluator.ssim_vals.append(np.abs(np.around(mean_sample_ssim, decimals=3)))
+                            """save the gif images"""
+                            #generator predicts values just outside [0,1] in the beginning of the training. Clip it to [0,1]
+                            gif_images = np.clip(np.array(self.gif_images), 0, 1) 
                             
+                            #avoid data type conversion warning
+                            #gif_images = gif_images.astype('uint8') 
+                            
+                            #save the generated gifs
+                            for i in range(self.gif_batch):
+                                imageio.mimsave('progress/gif_image_{}.gif'.format(i), gif_images[i])
+                            
+                            """save the model"""
                             self.G.save("models/{}_{}.h5".format(epoch, batch_i))
+                        
+                        if batch_i % int(self.data_loader.n_batches/20) == 0 and batch_i!=0:
+                            """update the SSIM evolution graph saved in the file progress"""
                             
-                            r"""
-                            if batch_i % (3*sample_interval) == sample_interval:
-                                db_ssim = performance_evaluator.objective_test()
-                                print("Test data mean SSIM -----%05f------ in (DB)" %(db_ssim))
-                            """
-                        if epoch<1:
-                            if batch_i % (2*sample_interval) == 0 and batch_i!=0:
-                                fig = plt.figure()
-                                ax = fig.add_subplot(1, 1, 1)
-                                num_values_saved=len(performance_evaluator.ssim_vals)
-                                ax.plot(np.arange(1, num_values_saved+1)*sample_interval, np.array(performance_evaluator.ssim_vals), color='blue')
-                                ax.plot(np.arange(1, num_values_saved+1)*sample_interval, np.ones(num_values_saved)*0.9, color = 'red')
-                                plt.title("mean sample SSIM vs number of batches")
-                                fig.savefig("progress/ssim_curve.png")
+                            #calculate the mean SSIM on test data
+                            total_mean_ssim = performance_evaluator.objective_test()
+                            #save the value
+                            performance_evaluator.ssim_vals.append(np.abs(np.around(total_mean_ssim, decimals=3)))
+                            #save the time point of the training
+                            training_time_point = epoch+batch_i/self.data_loader.n_batches
+                            performance_evaluator.training_points.append(np.around(training_time_point, 3))
+                            
+                            #update the SSIM evolution graph using the new point
+                            fig = plt.figure()
+                            ax = fig.add_subplot(1, 1, 1)
+                            num_values_saved = len(performance_evaluator.ssim_vals)
+                            ax.plot(np.array(performance_evaluator.training_points), np.array(performance_evaluator.ssim_vals), color='blue')
+                            ax.plot(np.array(performance_evaluator.training_points), np.ones(num_values_saved)*0.9, color = 'red')
+                            plt.title("mean sample SSIM vs training epochs")
+                            fig.savefig("progress/ssim_curve.png")
                         
                         
         except KeyboardInterrupt:
@@ -320,18 +359,29 @@ class WespeGAN():
             print("Training was interrupted after %s" %(end_time-start_time))
             print("Training interruption details: epochs: {} --- batches: {}/{}".format(epoch, batch_i, self.data_loader.n_batches))
             
+            #compute the final mean SSIM on test data and report it
             total_mean_ssim = performance_evaluator.objective_test()
             
-            #print(performance_evaluator.ssim_vals)
+            #display the final SSIM evolution graph
             plt.figure()
-            num_values_saved=len(performance_evaluator.ssim_vals)
-            plt.plot(np.arange(1, num_values_saved+1)*sample_interval, np.array(performance_evaluator.ssim_vals))
-            plt.title("mean sample SSIM vs number of batches")
+            num_values_saved = len(performance_evaluator.ssim_vals)
+            ax.plot(np.array(performance_evaluator.training_points), np.array(performance_evaluator.ssim_vals), color='blue')
+            ax.plot(np.array(performance_evaluator.training_points), np.ones(num_values_saved)*0.9, color = 'red')
+            plt.title("mean sample SSIM vs training epochs")
             plt.show()
             
             self.G.save("models/KeyboardInterrupt_{}_{}%.h5".format(epoch, int(batch_i/self.data_loader.n_batches*100)))
             
             print("Report has been generated. Model has been saved.")
+            
+            #Create the gif images
+            gif_images = np.clip(np.array(self.gif_images), 0, 1)
+            gif_images = gif_images.astype('uint8')
+            for i in range(self.gif_batch):
+                imageio.mimsave('progress/gif_image_{}.gif'.format(i), gif_images[i])
+            print("Gif images have been generated and saved successfully")
+            
+            print("Training has been completed")
                         
         
 

@@ -29,7 +29,9 @@ class evaluator(object):
             self.model = model
             self.epoch = epoch
             self.num_batch = num_batch
-            self.ssim_vals = []
+            
+            self.training_points=[] #training time locations where mean SSIM value on test data has been calculated
+            self.ssim_vals = [] #calculated SSIM values on test data
     
     def perceptual_test(self, batch_size):
         phone_imgs, dslr_imgs = self.data_loader.load_paired_data(batch_size=batch_size)

@@ -13,7 +13,7 @@ def vgg_loss(y_true, y_pred):
     input_tensor = K.concatenate([y_true, y_pred], axis=0)
     model = VGG19(input_tensor=input_tensor,weights='imagenet', include_top=False)
     outputs_dict = dict([(layer.name, layer.output) for layer in model.layers])
-    layer_features = outputs_dict["block2_conv1"]
+    layer_features = outputs_dict["block2_conv2"]
     y_true_features = layer_features[0, :, :, :]
     y_pred_features = layer_features[1, :, :, :]
      
