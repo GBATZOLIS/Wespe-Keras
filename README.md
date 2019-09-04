@@ -14,12 +14,11 @@ Steps to run the training:
 
 ## Requirements
 
-*Tensorflow-gpu
-*keras
-*openCV
-*scipy
-*Pillow
-*scikit-image
+* keras (tensorflow backend)
+* openCV
+* scipy
+* Pillow
+* scikit-image
 
 
 ## Preliminary experiments/results
