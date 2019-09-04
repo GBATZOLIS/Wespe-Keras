@@ -16,5 +16,4 @@ Steps to run the training:
 
 Visual results after 1 and 2 epochs (about 1.5h of training time in GTX 2080-ti) are saved in the folder "sample images"
 
-Results of the full training will be released soon.
-
+Qualitative & quantitative results of the full training and the trained model will be released soon
