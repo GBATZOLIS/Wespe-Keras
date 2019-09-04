@@ -15,7 +15,6 @@ Steps to run the training:
 ## Requirements
 
 * keras (tensorflow backend)
-* openCV
 * scipy
 * Pillow
 * scikit-image
