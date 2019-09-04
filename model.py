@@ -37,7 +37,7 @@ from IPython import get_ipython
 get_ipython().run_line_magic('matplotlib', 'qt')
 
 import warnings
-warnings.filterwarnings("ignore")
+#warnings.filterwarnings("ignore")
 
 
 class WespeGAN():
@@ -51,7 +51,7 @@ class WespeGAN():
         
         #details for gif creation featuring the progress of the training.
         self.gif_batch=10
-        self.gif_frames_per_sample_interval=10
+        self.gif_frames_per_sample_interval=5
         self.gif_images = [[] for i in range(self.gif_batch)]
         
         
@@ -120,7 +120,7 @@ class WespeGAN():
         
         
         
-        self.combined.compile(loss=[binary_crossentropy, binary_crossentropy, 'mae', 'mae', total_variation],
+        self.combined.compile(loss=[binary_crossentropy, binary_crossentropy, vgg_loss, 'mae', total_variation],
                             loss_weights=[10, 5, 5, 2, 0.1],
                             optimizer=optimizer)
         
@@ -262,7 +262,7 @@ class WespeGAN():
                         # Translate images to opposite domain
                         fake_B = self.G.predict(imgs_A)
                         
-                        #get 10 fake_gif_frames in sample_interval batches
+                        #get self.gif_frames_per_sample_interval fake gif frames in sample_interval batches
                         if batch_i % int(sample_interval/self.gif_frames_per_sample_interval)==0:
                             fake_gif_batch = self.G.predict(gif_batch)
                             for i in range(self.gif_batch):
@@ -317,7 +317,8 @@ class WespeGAN():
                             performance_evaluator.perceptual_test(5) 
                             
                             """SSIM based evaluation on a batch of test data"""
-                            mean_sample_ssim = performance_evaluator.objective_test(100) 
+                            #calculate mean SSIM on approximately 10% of the test data
+                            mean_sample_ssim = performance_evaluator.objective_test(400) 
                             
                             """save the gif images"""
                             #generator predicts values just outside [0,1] in the beginning of the training. Clip it to [0,1]
@@ -333,7 +334,7 @@ class WespeGAN():
                             """save the model"""
                             self.G.save("models/{}_{}.h5".format(epoch, batch_i))
                         
-                        if batch_i % int(self.data_loader.n_batches/20) == 0 and batch_i!=0:
+                        if batch_i % int(self.data_loader.n_batches/5) == 0 and batch_i!=0:
                             """update the SSIM evolution graph saved in the file progress"""
                             
                             #calculate the mean SSIM on test data
@@ -358,6 +359,7 @@ class WespeGAN():
             end_time=datetime.datetime.now()
             print("Training was interrupted after %s" %(end_time-start_time))
             print("Training interruption details: epochs: {} --- batches: {}/{}".format(epoch, batch_i, self.data_loader.n_batches))
+            print("Wait for the training final report to be generated.")
             
             #compute the final mean SSIM on test data and report it
             total_mean_ssim = performance_evaluator.objective_test()
@@ -369,10 +371,7 @@ class WespeGAN():
             ax.plot(np.array(performance_evaluator.training_points), np.ones(num_values_saved)*0.9, color = 'red')
             plt.title("mean sample SSIM vs training epochs")
             plt.show()
-            
-            self.G.save("models/KeyboardInterrupt_{}_{}%.h5".format(epoch, int(batch_i/self.data_loader.n_batches*100)))
-            
-            print("Report has been generated. Model has been saved.")
+            print("Final SSIM evolution graph has been displayed")
             
             #Create the gif images
             gif_images = np.clip(np.array(self.gif_images), 0, 1)
@@ -381,15 +380,18 @@ class WespeGAN():
                 imageio.mimsave('progress/gif_image_{}.gif'.format(i), gif_images[i])
             print("Gif images have been generated and saved successfully")
             
+            self.G.save("models/KeyboardInterrupt_{}_{}%.h5".format(epoch, int(batch_i/self.data_loader.n_batches*100)))
+            print("Model has been saved.")
+            
             print("Training has been completed")
                         
         
 
 if __name__ == '__main__':
     patch_size=(100, 100)
-    epochs=50
-    batch_size=5
-    sample_interval = 50 #after sample_interval batches save the model and generate sample images
+    epochs=200
+    batch_size=30
+    sample_interval = 500 #after sample_interval batches save the model and generate sample images
     
     gan = WespeGAN(patch_size=patch_size)
     gan.train(epochs=epochs, batch_size=batch_size, sample_interval=sample_interval)
