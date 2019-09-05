@@ -37,7 +37,7 @@ from IPython import get_ipython
 get_ipython().run_line_magic('matplotlib', 'qt')
 
 import warnings
-#warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore")
 
 
 class WespeGAN():
@@ -51,19 +51,14 @@ class WespeGAN():
         
         #details for gif creation featuring the progress of the training.
         self.gif_batch=10
-        self.gif_frames_per_sample_interval=5
+        self.gif_frames_per_sample_interval=10
         self.gif_images = [[] for i in range(self.gif_batch)]
         
         
         # Configure data loader
-        #self.main_path = "C:\\Users\\Georgios\\Desktop\\4year project\\wespeDATA"
-        #self.dataset_name = "cycleGANtrial"
         self.data_loader = DataLoader(img_res=(self.img_rows, self.img_cols))
         
-        #configure perceptual loss 
-        self.content_layer = 'block1_conv2'
-        
-        #set the blurring settings
+        #set the blurring and texture discriminator settings
         self.kernel_size=21
         self.std = 3
         self.blur_kernel_weights = gauss_kernel(self.kernel_size, self.std, self.channels)
@@ -120,8 +115,8 @@ class WespeGAN():
         
         
         
-        self.combined.compile(loss=[binary_crossentropy, binary_crossentropy, vgg_loss, 'mae', total_variation],
-                            loss_weights=[10, 5, 5, 2, 0.1],
+        self.combined.compile(loss=[binary_crossentropy, binary_crossentropy, 'mae', 'mae', total_variation],
+                            loss_weights=[10, 10, 6, 3, 0.1],
                             optimizer=optimizer)
         
         print(self.combined.summary())
@@ -159,6 +154,7 @@ class WespeGAN():
 
 
     def discriminator_network(self, name, preprocess = 'gray'):
+        #The main modification from the original approach is the use of the InstanceNormalisation layer
         
         image = Input(self.img_shape)
         
@@ -306,12 +302,15 @@ class WespeGAN():
         
                         # If at save interval => save generated image samples
                         if batch_i % sample_interval == 0:
-                            print("Epoch: {} --- Batch: {} ---- saved".format(epoch, batch_i))
                             
                             """update the attributes of the performance_evaluator class"""
                             performance_evaluator.model = self.G
                             performance_evaluator.epoch = epoch
                             performance_evaluator.num_batch = batch_i
+                            
+                            """save the model"""
+                            self.G.save("models/{}_{}.h5".format(epoch, batch_i))
+                            print("Epoch: {} --- Batch: {} ---- model saved".format(epoch, batch_i))
                             
                             """generation of perceptual results"""
                             performance_evaluator.perceptual_test(5) 
@@ -320,19 +319,19 @@ class WespeGAN():
                             #calculate mean SSIM on approximately 10% of the test data
                             mean_sample_ssim = performance_evaluator.objective_test(400) 
                             
+                        #save the gifs every two sample intervals
+                        if batch_i % (2*sample_interval) == 0:
                             """save the gif images"""
+                             
                             #generator predicts values just outside [0,1] in the beginning of the training. Clip it to [0,1]
-                            gif_images = np.clip(np.array(self.gif_images), 0, 1) 
+                            gif_images = np.clip(np.array(self.gif_images), 0, 1)*255.
                             
                             #avoid data type conversion warning
-                            #gif_images = gif_images.astype('uint8') 
+                            gif_images = gif_images.astype('uint8') 
                             
                             #save the generated gifs
                             for i in range(self.gif_batch):
                                 imageio.mimsave('progress/gif_image_{}.gif'.format(i), gif_images[i])
-                            
-                            """save the model"""
-                            self.G.save("models/{}_{}.h5".format(epoch, batch_i))
                         
                         if batch_i % int(self.data_loader.n_batches/5) == 0 and batch_i!=0:
                             """update the SSIM evolution graph saved in the file progress"""
@@ -362,19 +361,19 @@ class WespeGAN():
             print("Wait for the training final report to be generated.")
             
             #compute the final mean SSIM on test data and report it
-            total_mean_ssim = performance_evaluator.objective_test()
+            #total_mean_ssim = performance_evaluator.objective_test()
             
             #display the final SSIM evolution graph
             plt.figure()
             num_values_saved = len(performance_evaluator.ssim_vals)
-            ax.plot(np.array(performance_evaluator.training_points), np.array(performance_evaluator.ssim_vals), color='blue')
-            ax.plot(np.array(performance_evaluator.training_points), np.ones(num_values_saved)*0.9, color = 'red')
+            plt.plot(np.array(performance_evaluator.training_points), np.array(performance_evaluator.ssim_vals), color='blue')
+            plt.plot(np.array(performance_evaluator.training_points), np.ones(num_values_saved)*0.9, color = 'red')
             plt.title("mean sample SSIM vs training epochs")
             plt.show()
             print("Final SSIM evolution graph has been displayed")
             
             #Create the gif images
-            gif_images = np.clip(np.array(self.gif_images), 0, 1)
+            gif_images = np.clip(np.array(self.gif_images), 0, 1)*255
             gif_images = gif_images.astype('uint8')
             for i in range(self.gif_batch):
                 imageio.mimsave('progress/gif_image_{}.gif'.format(i), gif_images[i])
@@ -389,7 +388,7 @@ class WespeGAN():
 
 if __name__ == '__main__':
     patch_size=(100, 100)
-    epochs=200
+    epochs=1000
     batch_size=30
     sample_interval = 500 #after sample_interval batches save the model and generate sample images
     
