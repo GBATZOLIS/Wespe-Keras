@@ -68,13 +68,14 @@ class evaluator(object):
         plt.close('all')
         print("Perceptual results have been generated")
     
-    def objective_test(self, batch_size=None):
+    def objective_test(self, batch_size=None, baseline=False):
         phone_imgs, dslr_imgs = self.data_loader.load_paired_data(batch_size=batch_size)
-        dslr_imgs = dslr_imgs.astype('float32') 
-        #print(dslr_imgs.dtype)
+        dslr_imgs = dslr_imgs.astype('float32') #necessary typecasting
         
-        fake_dslr_images = self.model.predict(phone_imgs)
-        #print(fake_dslr_images.dtype)
+        if baseline:
+            fake_dslr_images=phone_imgs
+        else:
+            fake_dslr_images = self.model.predict(phone_imgs)
         
         batch_size=phone_imgs.shape[0]
         total_ssim=0
@@ -82,7 +83,7 @@ class evaluator(object):
             total_ssim+=ssim(fake_dslr_images[i,:,:,:], dslr_imgs[i,:,:,:], multichannel=True)
         
         mean_ssim = total_ssim/batch_size
-        print("Sample mean SSIM ---------%05f--------- " %(mean_ssim))
+        #print("Sample mean SSIM ---------%05f--------- " %(mean_ssim))
         
         #db_ssim = 10*np.log10(mean_ssim)
         return mean_ssim
