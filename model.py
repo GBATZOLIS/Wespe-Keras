@@ -55,6 +55,16 @@ class WespeGAN():
         self.gif_frames_per_sample_interval=5
         self.gif_images = [[] for i in range(self.gif_batch_size)]
         
+        #manual logs
+        #this will be changed using tensorboard
+        self.log_TrainingPoint=[]
+        self.log_D_colorloss=[]
+        self.log_D_textureloss=[]
+        self.log_G_colorloss=[]
+        self.log_G_textureloss=[]
+        self.log_ReconstructionLoss=[]
+        self.log_TotalVariance=[]
+        
         
         # Configure data loader
         self.data_loader = DataLoader(img_res=(self.img_rows, self.img_cols))
@@ -227,6 +237,34 @@ class WespeGAN():
         return Model(inputs=image, outputs=logits, name=name)
     
     
+    def logger(self,):
+        fig, axs = plt.subplots(2, 2, figsize=(6,8))
+        
+        ax = axs[0,0]
+        ax.plot(self.log_TrainingPoint, self.log_D_colorloss, label="D_color")
+        ax.plot(self.log_TrainingPoint, self.log_D_textureloss, label="D_loss")
+        ax.legend()
+        ax.set_title("Discriminator Adv losses")
+        
+        ax = axs[0,1]
+        ax.plot(self.log_TrainingPoint, self.log_G_colorloss, label="D_color")
+        ax.plot(self.log_TrainingPoint, self.log_G_textureloss, label="D_loss")
+        ax.legend()
+        ax.set_title("Generator Adv losses")
+        
+        ax = axs[1,0]
+        ax.plot(self.log_TrainingPoint, self.log_ReconstructionLoss)
+        ax.set_title("Cycle-Content loss")
+        
+        ax = axs[1,1]
+        ax.plot(self.log_TrainingPoint, self.log_TotalVariance)
+        ax.set_title("Total Variation loss")
+        
+        fig.savefig("log.png")
+        
+        
+        
+        
     
 
     def train(self, epochs, batch_size=1, sample_interval=50):
@@ -234,8 +272,6 @@ class WespeGAN():
         
         
         start_time = datetime.datetime.now()
-        
-        
         
         try:
             
@@ -275,10 +311,13 @@ class WespeGAN():
                         dcolor_loss_real = self.D_color.train_on_batch(imgs_B, valid)
                         dcolor_loss_fake = self.D_color.train_on_batch(fake_B, fake)
                         dcolor_loss = 0.5 * np.add(dcolor_loss_real, dcolor_loss_fake)
+                        self.log_D_colorloss.append(dcolor_loss[0])
+                        
         
                         dtexture_loss_real = self.D_texture.train_on_batch(imgs_B, valid)
                         dtexture_loss_fake = self.D_texture.train_on_batch(fake_B, fake)
                         dtexture_loss = 0.5 * np.add(dtexture_loss_real, dtexture_loss_fake)
+                        self.log_D_textureloss.append(dtexture_loss[0])
         
                         # Total disciminator loss
                         d_loss = 0.5 * np.add(dcolor_loss, dtexture_loss)
@@ -291,6 +330,14 @@ class WespeGAN():
                         # Train the generators
                         g_loss = self.combined.train_on_batch(imgs_A, [valid, valid,
                                                                 imgs_A, imgs_A])
+                        
+                        self.log_G_colorloss.append(g_loss[1])
+                        self.log_G_textureloss.append(g_loss[2])
+                        self.log_ReconstructionLoss.append(g_loss[3])
+                        self.log_TotalVariance.append(g_loss[4])
+                        training_time_point = epoch+batch_i/self.data_loader.n_batches
+                        self.log_TrainingPoint.append(np.around(training_time_point,3))
+    
         
                         elapsed_time = datetime.datetime.now() - start_time
         
@@ -307,6 +354,8 @@ class WespeGAN():
         
                         # If at save interval => save generated image samples
                         if batch_i % sample_interval == 0:
+                            """logger"""
+                            self.logger()
                             
                             """update the attributes of the performance_evaluator class"""
                             performance_evaluator.model = self.G
@@ -422,8 +471,8 @@ class WespeGAN():
 if __name__ == '__main__':
     patch_size=(100, 100)
     epochs=100
-    batch_size=30
-    sample_interval = 500 #after sample_interval batches save the model and generate sample images
+    batch_size=2
+    sample_interval = 50 #after sample_interval batches save the model and generate sample images
     
     gan = WespeGAN(patch_size=patch_size)
     gan.train(epochs=epochs, batch_size=batch_size, sample_interval=sample_interval)
