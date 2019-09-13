@@ -260,7 +260,7 @@ class WespeGAN():
         ax.plot(self.log_TrainingPoint, self.log_TotalVariance)
         ax.set_title("Total Variation loss")
         
-        fig.savefig("log.png")
+        fig.savefig("progress/log.png")
         
         
         
@@ -471,8 +471,8 @@ class WespeGAN():
 if __name__ == '__main__':
     patch_size=(100, 100)
     epochs=100
-    batch_size=2
-    sample_interval = 50 #after sample_interval batches save the model and generate sample images
+    batch_size=30
+    sample_interval = 500 #after sample_interval batches save the model and generate sample images
     
     gan = WespeGAN(patch_size=patch_size)
     gan.train(epochs=epochs, batch_size=batch_size, sample_interval=sample_interval)
