@@ -2,6 +2,7 @@
 import keras.backend as K
 from keras.applications.vgg19 import VGG19
 import tensorflow as tf
+from skimage.measure import compare_ssim
 
 def binary_crossentropy(y_true, y_pred):
     #the input tensors are expected to be logits (not passed through softmax)
@@ -10,6 +11,7 @@ def binary_crossentropy(y_true, y_pred):
     
     
 def vgg_loss(y_true, y_pred):
+    print(y_true.shape)
     input_tensor = K.concatenate([y_true, y_pred], axis=0)
     model = VGG19(input_tensor=input_tensor,weights='imagenet', include_top=False)
     outputs_dict = dict([(layer.name, layer.output) for layer in model.layers])
@@ -19,22 +21,8 @@ def vgg_loss(y_true, y_pred):
      
     return K.mean(K.square(y_true_features - y_pred_features)) 
 
-
-"""
-def total_variation(y_true, y_pred):
-    
-    images=y_pred
-    
-    pixel_dif1 = images[:, 1:, :, :] - images[:, :-1, :, :]
-    pixel_dif2 = images[:, :, 1:, :] - images[:, :, :-1, :]
-      
-    a = K.square(pixel_dif1)
-    b = K.square(pixel_dif2)
-    
-    sum_axis = [1, 2, 3]
-    
-    return (K.mean(a, axis = sum_axis)+K.mean(b, axis = sum_axis))
-"""
+def ssim(y_true, y_pred):
+    return compare_ssim(y_true, y_pred, multichannel=True)
 
 
 def total_variation(y_true, y_pred):

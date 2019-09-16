@@ -2,6 +2,9 @@ from __future__ import print_function, division
 import scipy
 
 from keras_contrib.layers.normalization.instancenormalization import InstanceNormalization
+from keras_contrib.losses.dssim import DSSIMObjective
+
+
 # define layer
 #layer = InstanceNormalization(axis=-1)
 
@@ -29,7 +32,7 @@ from keras.models import Model
 from preprocessing import gauss_kernel, rgb2gray, NormalizeData
 from architectures import resblock
 
-from loss_functions import  total_variation, binary_crossentropy, vgg_loss
+from loss_functions import  total_variation, binary_crossentropy, vgg_loss, ssim
 #from keras_radam import RAdam
 from keras.applications.vgg19 import VGG19
 from test_performance import evaluator
@@ -126,8 +129,8 @@ class WespeGAN():
                               outputs=[valid_A_color, valid_A_texture, reconstr_A, fake_B])
         
         
-        
-        self.combined.compile(loss=[binary_crossentropy, binary_crossentropy, vgg_loss, total_variation],
+        ssim_loss = DSSIMObjective()
+        self.combined.compile(loss=[binary_crossentropy, binary_crossentropy, ssim_loss, total_variation],
                             loss_weights=[0.1, 0.05, 1, 0.1],
                             optimizer=optimizer)
         
@@ -388,7 +391,7 @@ class WespeGAN():
                             for i in range(self.gif_batch_size):
                                 imageio.mimsave('progress/gif_image_{}.gif'.format(i), gif_images[i])
                         
-                        if batch_i % int(self.data_loader.n_batches/10) == 0:
+                        if batch_i % int(self.data_loader.n_batches/10) == 0 and batch_i!=0:
                             """update the SSIM evolution graph saved in the file progress"""
                             
                             #update the attributes of the performance_evaluator class
@@ -471,8 +474,8 @@ class WespeGAN():
 if __name__ == '__main__':
     patch_size=(100, 100)
     epochs=100
-    batch_size=30
-    sample_interval = 500 #after sample_interval batches save the model and generate sample images
+    batch_size=2
+    sample_interval = 400 #after sample_interval batches save the model and generate sample images
     
     gan = WespeGAN(patch_size=patch_size)
     gan.train(epochs=epochs, batch_size=batch_size, sample_interval=sample_interval)
