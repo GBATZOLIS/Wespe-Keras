@@ -1,6 +1,7 @@
 
 import keras.backend as K
 from keras.applications.vgg19 import VGG19
+from keras.applications.vgg19 import preprocess_input
 import tensorflow as tf
 from skimage.measure import compare_ssim
 
@@ -12,8 +13,12 @@ def binary_crossentropy(y_true, y_pred):
     
 def vgg_loss(y_true, y_pred):
     #print(y_true.shape)
+    #y_true = preprocess_input(y_true)
+    #y_pred = preprocess_input(y_pred)
+    #y_true=255*y_true
+    #y_pred=y_pred*255
     input_tensor = K.concatenate([y_true, y_pred], axis=0)
-    model = VGG19(input_tensor=input_tensor,weights='imagenet', include_top=False, input_shape=[100, 100, 3])
+    model = VGG19(input_tensor=input_tensor,weights='imagenet', include_top=False)
     
     model.trainable = False
     for l in model.layers:
