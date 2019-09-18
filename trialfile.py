@@ -6,7 +6,9 @@ Created on Fri Sep 13 15:12:50 2019
 """
 
 import matplotlib.pyplot as plt
-fig, axs = plt.subplots(2, 3, figsize=(6,8))
-print(type(axs))
-print(axs.shape)
-print(axs[0,0])
+import numpy as np
+import cv2
+
+path="data/trainA/18.JPG"
+x = cv2.imread(path)
+print(np.amin(x), np.amax(x))

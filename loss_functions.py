@@ -11,9 +11,18 @@ def binary_crossentropy(y_true, y_pred):
     
     
 def vgg_loss(y_true, y_pred):
-    print(y_true.shape)
+    #print(y_true.shape)
     input_tensor = K.concatenate([y_true, y_pred], axis=0)
-    model = VGG19(input_tensor=input_tensor,weights='imagenet', include_top=False)
+    model = VGG19(input_tensor=input_tensor,weights='imagenet', include_top=False, input_shape=[100, 100, 3])
+    
+    model.trainable = False
+    for l in model.layers:
+        l.trainable = False
+
+    model.compile(optimizer='rmsprop', loss='mse')
+    
+    print(model.summary())
+    
     outputs_dict = dict([(layer.name, layer.output) for layer in model.layers])
     layer_features = outputs_dict["block2_conv2"]
     y_true_features = layer_features[0, :, :, :]

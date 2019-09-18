@@ -129,8 +129,8 @@ class WespeGAN():
                               outputs=[valid_A_color, valid_A_texture, reconstr_A, fake_B])
         
         
-        ssim_loss = DSSIMObjective()
-        self.combined.compile(loss=[binary_crossentropy, binary_crossentropy, ssim_loss, total_variation],
+        #ssim_loss = DSSIMObjective()
+        self.combined.compile(loss=[binary_crossentropy, binary_crossentropy, vgg_loss, total_variation],
                             loss_weights=[0.1, 0.05, 1, 0.1],
                             optimizer=optimizer)
         
@@ -245,13 +245,13 @@ class WespeGAN():
         
         ax = axs[0,0]
         ax.plot(self.log_TrainingPoint, self.log_D_colorloss, label="D_color")
-        ax.plot(self.log_TrainingPoint, self.log_D_textureloss, label="D_loss")
+        ax.plot(self.log_TrainingPoint, self.log_D_textureloss, label="D_texture")
         ax.legend()
         ax.set_title("Discriminator Adv losses")
         
         ax = axs[0,1]
-        ax.plot(self.log_TrainingPoint, self.log_G_colorloss, label="D_color")
-        ax.plot(self.log_TrainingPoint, self.log_G_textureloss, label="D_loss")
+        ax.plot(self.log_TrainingPoint, self.log_G_colorloss, label="G_color")
+        ax.plot(self.log_TrainingPoint, self.log_G_textureloss, label="G_texture")
         ax.legend()
         ax.set_title("Generator Adv losses")
         
@@ -475,7 +475,7 @@ if __name__ == '__main__':
     patch_size=(100, 100)
     epochs=100
     batch_size=2
-    sample_interval = 400 #after sample_interval batches save the model and generate sample images
+    sample_interval = 100 #after sample_interval batches save the model and generate sample images
     
     gan = WespeGAN(patch_size=patch_size)
     gan.train(epochs=epochs, batch_size=batch_size, sample_interval=sample_interval)
