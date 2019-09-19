@@ -42,7 +42,6 @@ from architectures import resblock
 from loss_functions import  total_variation, binary_crossentropy, vgg_loss, ssim
 #from keras_radam import RAdam
 from keras.applications.vgg19 import VGG19
-from keras.applications.vgg19 import preprocess_input
 from test_performance import evaluator
 
 from IPython import get_ipython
@@ -75,7 +74,9 @@ class WespeGAN():
         self.log_G_textureloss=[]
         self.log_ReconstructionLoss=[]
         self.log_TotalVariance=[]
-        
+        self.log_sample_ssim_time_point=[]
+        self.log_sample_ssim=[]
+            
         
         # Configure data loader
         self.data_loader = DataLoader(img_res=(self.img_rows, self.img_cols))
@@ -115,14 +116,13 @@ class WespeGAN():
         
         #instantiate the VGG model
         self.vgg_model = VGG19(weights='imagenet', include_top=False, input_shape = self.img_shape)
-        self.layer_name="block5_conv4"
+        self.layer_name="block2_conv2"
         self.inter_VGG_model = Model(inputs=self.vgg_model.input, outputs=self.vgg_model.get_layer(self.layer_name).output)
         
         self.inter_VGG_model.trainable=False
         
         # Input images from both domains
         img_A = Input(shape=self.img_shape)
-        #img_A = preprocess_input(img_A)
         #img_A_vgg = vgg_model(img_A)
         #img_B = Input(shape=self.img_shape)
 
@@ -286,6 +286,12 @@ class WespeGAN():
         
         fig.savefig("progress/log.png")
         
+        fig, axs = plt.subplots(1,1)
+        ax=axs
+        ax.plot(self.log_sample_ssim_time_point, self.log_sample_ssim)
+        ax.set_title("sample SSIM value")
+        fig.savefig("progress/sample_ssim.png")
+        
         
         
         
@@ -314,6 +320,9 @@ class WespeGAN():
     
             for epoch in range(epochs):
                 for batch_i, (imgs_A, imgs_B) in enumerate(self.data_loader.load_batch(batch_size)):
+                    
+                    
+                        
                         # ----------------------
                         #  Train Discriminators
                         # ----------------------
@@ -395,6 +404,13 @@ class WespeGAN():
                             #calculate mean SSIM on approximately 10% of the test data
                             mean_sample_ssim = performance_evaluator.objective_test(400)
                             print("Sample mean SSIM ---------%05f--------- " %(mean_sample_ssim))
+                            log_sample_ssim_time_point = epoch+batch_i/self.data_loader.n_batches
+                            self.log_sample_ssim_time_point.append(np.around(log_sample_ssim_time_point,3))
+                            self.log_sample_ssim.append(mean_sample_ssim)
+                            
+                            """logger"""
+                            self.logger()
+                            
                             
                         #save the gifs every two sample intervals
                         if batch_i % (5*sample_interval) == 0 and batch_i!=0:
@@ -410,7 +426,7 @@ class WespeGAN():
                             for i in range(self.gif_batch_size):
                                 imageio.mimsave('progress/gif_image_{}.gif'.format(i), gif_images[i])
                         
-                        if batch_i % int(self.data_loader.n_batches/10) == 0 and batch_i!=0:
+                        if batch_i % int(self.data_loader.n_batches/5) == 0 and batch_i!=0:
                             """update the SSIM evolution graph saved in the file progress"""
                             
                             #update the attributes of the performance_evaluator class
@@ -493,8 +509,8 @@ class WespeGAN():
 if __name__ == '__main__':
     patch_size=(100, 100)
     epochs=100
-    batch_size=2
-    sample_interval = 100 #after sample_interval batches save the model and generate sample images
+    batch_size=32
+    sample_interval = 50 #after sample_interval batches save the model and generate sample images
     
     gan = WespeGAN(patch_size=patch_size)
     gan.train(epochs=epochs, batch_size=batch_size, sample_interval=sample_interval)
