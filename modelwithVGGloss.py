@@ -42,6 +42,7 @@ from architectures import resblock
 from loss_functions import  total_variation, binary_crossentropy, vgg_loss, ssim
 #from keras_radam import RAdam
 from keras.applications.vgg19 import VGG19
+from keras.applications.vgg19 import preprocess_input
 from test_performance import evaluator
 
 from IPython import get_ipython
@@ -114,13 +115,14 @@ class WespeGAN():
         
         #instantiate the VGG model
         self.vgg_model = VGG19(weights='imagenet', include_top=False, input_shape = self.img_shape)
-        self.layer_name="block2_conv2"
+        self.layer_name="block5_conv4"
         self.inter_VGG_model = Model(inputs=self.vgg_model.input, outputs=self.vgg_model.get_layer(self.layer_name).output)
         
         self.inter_VGG_model.trainable=False
         
         # Input images from both domains
         img_A = Input(shape=self.img_shape)
+        #img_A = preprocess_input(img_A)
         #img_A_vgg = vgg_model(img_A)
         #img_B = Input(shape=self.img_shape)
 
@@ -312,9 +314,6 @@ class WespeGAN():
     
             for epoch in range(epochs):
                 for batch_i, (imgs_A, imgs_B) in enumerate(self.data_loader.load_batch(batch_size)):
-                    
-                    
-                        
                         # ----------------------
                         #  Train Discriminators
                         # ----------------------
