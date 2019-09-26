@@ -10,6 +10,12 @@ import keras.backend as K
 import numpy as np
 import scipy.stats as st
 
+def rgb2tanhRange(image):
+    return 2*image/255-1
+
+def tanhRange2rgb(image):
+    return 1/2*(1+image)
+
 def rgb2gray(rgb):
     return np.dot(rgb[...,:3], [0.2989, 0.5870, 0.1140])
 

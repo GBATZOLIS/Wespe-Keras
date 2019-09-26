@@ -11,8 +11,11 @@ import numpy as np
 from architectures import generator_network
 import matplotlib.pyplot as plt
 from preprocessing import NormalizeData
+from glob import glob
+import os
 from skimage.measure import compare_ssim as ssim
-
+from skvideo.measure import niqe
+import cv2 as cv
 class evaluator(object):
     
     def __init__(self, img_shape=(100, 100, 3), model=None, model_name=None, epoch=None, num_batch=None):
@@ -22,7 +25,7 @@ class evaluator(object):
         
         if model_name:
             self.model_name = model_name
-            self.model = generator_network(self.img_shape, name="Test_Gen")
+            self.model = generator_network(self.img_shape, name="Test_Gen") #this has to be the same as the generator in the model file
             self.model.load_weights("models/%s" % (model_name))
         else:
             self.model_name = model_name
@@ -87,9 +90,87 @@ class evaluator(object):
         
         #db_ssim = 10*np.log10(mean_ssim)
         return mean_ssim
+    
+    def no_reference_test(self, model_name, batch_size=None, baseline=False):
+        image_test_path=glob("C:\\Users\\Georgios\\Desktop\\4year project\\wespeDATA\\dped\\dped\\iphone\\test_data\\full_size_test_images\\*")
+        phone_imgs=[]
+        for path in image_test_path:
+            image = plt.imread(path).astype(np.float)
+            phone_imgs.append(image)
+        phone_imgs=np.array(phone_imgs)
+        
+        img_shape = phone_imgs[0].shape
+        self.model_name = model_name
+        self.model = generator_network(img_shape, name="Test Generator") #this has to be the same as the generator in the model file
+        self.model.load_weights("models/%s" % (model_name))
+        
+        Y_phone_imgs=[]
+        for i in range(phone_imgs.shape[0]):
+            Y =  0.299*phone_imgs[i,:,:,0] + 0.587*phone_imgs[i,:,:,1] + 0.114*phone_imgs[i,:,:,2]
+            Y_phone_imgs.append(Y)
+        
+        Y_phone_imgs=np.array(Y_phone_imgs)
+        niqe_val = niqe(Y_phone_imgs)
+        return niqe_val
+    
+    def enhance_image(self, img_path, model_name, reference=True):
+        
+        phone_image = self.data_loader.load_img(img_path) #load image
+        
+        phone_image = phone_image[0]
+        #phone_image = phone_image[400:1200, 500:1300, :]
+        img_shape = phone_image.shape #get dimensions to build the suitable model
+        
+        
+        self.model_name = model_name
+        self.model = generator_network(img_shape, name="Test Generator") #this has to be the same as the generator in the model file
+        self.model.load_weights("models/%s" % (model_name))
+        
         
             
+        fake_dslr_image = self.model.predict(np.expand_dims(phone_image, axis=0))
+        print(np.amax(fake_dslr_image))
+        print(np.amin(fake_dslr_image))
+        #width=phone_image[0].shape[0]
+        #height = phone_image[0].shape[1]
+        if reference:
+            fig, axs = plt.subplots(1, 2)
+            #fig.set_size_inches(10, 8)
+            ax = axs[0]
+            ax.imshow(phone_image)
+            ax.set_title("phone image")
+            
+            ax = axs[1]
+            ax.imshow(np.clip(fake_dslr_image[0], 0, 1))
+            ax.set_title("enahnced phone image")
+            #filename=os.path.basename(img_path)
+            #fig.savefig("sample images\\"+filename, dpi = )
+            #plt.show()
+            #plt.close()
+        
+        else:
+            #plt.figure()
+            #plt.axis('off')
+            filename=os.path.basename(img_path)
+            filename=filename.split(".")[0]+".png"
+            print(filename)
+            file_save="sample images/"+filename
+            #Image.fromarray(np.clip(fake_dslr_image[0], 0, 1)).save(file_save)
+            #cv.imwrite(file_save,np.clip(fake_dslr_image[0], 0, 1))
+            plt.imsave(file_save, np.clip(fake_dslr_image[0], 0, 1))
+            
+            
+            #plt.savefig("C:\\Users\\Georgios\\Desktop\\enhanced big images\\experiment ROI\\"+filename, dpi='figure', bbox_inches='tight')
+            #plt.close()
+           
+        
+"""
 
-#new_eval = evaluator(model_name="0_850.h5")
-#print(new_eval.objective_test(1000))
-    
+new_eval = evaluator()
+image_paths=glob("C:\\Users\\Georgios\\Desktop\\4year project\\wespeDATA\\dped\\dped\\iphone\\test_data\\full_size_test_images\\*")
+print(image_paths)
+model_name="2_750_check.h5"
+for i in range(6):
+    new_eval.enhance_image(image_paths[i], model_name, reference=False)
+
+"""

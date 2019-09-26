@@ -128,7 +128,7 @@ class DataLoader():
 
     def load_img(self, path):
         img = self.imread(path)
-        img = scipy.misc.imresize(img, self.img_res)
+        #img = scipy.misc.imresize(img, self.img_res)
         img = img/255
         return img[np.newaxis, :, :, :]
 

@@ -18,12 +18,14 @@ def resblock(feature_in, num):
     # subblock (conv. + BN + relu)
     temp =  Conv2D(64, (3, 3), strides = 1, padding = 'SAME', name = ('resblock_%d_CONV_1' %num), kernel_initializer = glorot_normal())(feature_in)
     #temp = BatchNormalization(name = ('resblock_%d_BN_1' %num))(temp)
-    temp = Activation('relu')(temp)
+    #temp = Activation('relu')(temp)
+    temp = LeakyReLU(alpha=0.2)(temp)
         
     # subblock (conv. + BN + relu)
     temp =  Conv2D(64, (3, 3), strides = 1, padding = 'SAME', name = ('resblock_%d_CONV_2' %num), kernel_initializer = glorot_normal())(temp)
     #temp = BatchNormalization(name = ('resblock_%d_BN_2' %num))(temp)
-    temp = Activation('relu')(temp)
+    #temp = Activation('relu')(temp)
+    temp = LeakyReLU(alpha=0.2)(temp)
     
     return Add()([temp, feature_in])
 
