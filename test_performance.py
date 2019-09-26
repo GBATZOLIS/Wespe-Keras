@@ -154,7 +154,7 @@ class evaluator(object):
             filename=os.path.basename(img_path)
             filename=filename.split(".")[0]+".png"
             print(filename)
-            file_save="sample images/"+filename
+            file_save="progress/enhanced images/"+filename
             #Image.fromarray(np.clip(fake_dslr_image[0], 0, 1)).save(file_save)
             #cv.imwrite(file_save,np.clip(fake_dslr_image[0], 0, 1))
             plt.imsave(file_save, np.clip(fake_dslr_image[0], 0, 1))
