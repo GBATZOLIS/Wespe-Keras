@@ -12,7 +12,6 @@ Created on Wed Sep 18 17:12:49 2019
 @author: Georgios
 """
 
-from __future__ import print_function, division
 import scipy
 
 from keras_contrib.layers.normalization.instancenormalization import InstanceNormalization
@@ -68,6 +67,11 @@ class FeedBackGAN():
         self.channels = 3
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
         
+        #Feedback 
+        #test image paths
+        self.test_image_dir="C:\\Users\\Georgios\\Desktop\\4year project\\wespeDATA\\dped\\dped\\iphone\\test_data\\full_size_test_images\\"
+        self.test_image_paths=glob(self.test_image_dir+"*")
+        self.MSE_weights=np.ones(128)
         
         #details for gif creation featuring the progress of the training.
         self.gif_batch_size=5
@@ -81,7 +85,8 @@ class FeedBackGAN():
         self.log_D_textureloss=[]
         self.log_G_colorloss=[]
         self.log_G_textureloss=[]
-        self.log_ReconstructionLoss=[]
+        self.log_ReconstructionLossA=[]
+        self.log_ReconstructionLossB=[]
         self.log_TotalVariance=[]
         self.log_sample_ssim_time_point=[]
         self.log_sample_ssim=[]
@@ -162,14 +167,21 @@ class FeedBackGAN():
         
         
         #ssim_loss = DSSIMObjective()
-        self.combined.compile(loss=[binary_crossentropy, binary_crossentropy, 'mse', 'mse', total_variation],
+        self.combined.compile(loss=[binary_crossentropy, binary_crossentropy, self.weighted_MSE, 'mse', total_variation],
                             loss_weights=[0.5, 0.3, 1, 1, 0.5],
                             optimizer=optimizer)
         
         print(self.combined.summary())
         
-        
-
+    
+    def weighted_MSE(self, y_true, y_pred):
+        result=0
+        #filters=shape[3]
+        for i in range(128):
+            result+=self.MSE_weights[i]*K.mean(K.square(y_true[0,:,:,i]-y_pred[0,:,:,i]))
+            
+        return result/128
+    
     def generator_network(self, name):
         
         image=Input(self.img_shape)
@@ -292,7 +304,8 @@ class FeedBackGAN():
         ax.set_title("Generator Adv losses")
         
         ax = axs[1,0]
-        ax.plot(self.log_TrainingPoint, self.log_ReconstructionLoss)
+        ax.plot(self.log_TrainingPoint, self.log_ReconstructionLossA, label="reconstruction A" )
+        ax.plot(self.log_TrainingPoint, self.log_ReconstructionLossB, label="reconstruction B" )
         ax.set_title("Cycle-Content loss")
         
         ax = axs[1,1]
@@ -307,7 +320,7 @@ class FeedBackGAN():
         ax.set_title("sample SSIM value")
         fig.savefig("progress/sample_ssim.png")
         
-        
+        plt.close('all')
         
         
     
@@ -320,7 +333,7 @@ class FeedBackGAN():
         
         try:
             
-            gif_batch = self.data_loader.load_data(domain="A", batch_size = self.gif_batch_size, is_testing = True)
+            #gif_batch = self.data_loader.load_data(domain="A", batch_size = self.gif_batch_size, is_testing = True)
             
             # Adversarial loss ground truths
             valid = np.ones((batch_size,1))
@@ -382,7 +395,8 @@ class FeedBackGAN():
                         
                         self.log_G_colorloss.append(g_loss[1])
                         self.log_G_textureloss.append(g_loss[2])
-                        self.log_ReconstructionLoss.append(np.mean(g_loss[3:5]))
+                        self.log_ReconstructionLossA.append(g_loss[3])
+                        self.log_ReconstructionLossB.append(g_loss[4])
                         self.log_TotalVariance.append(g_loss[5])
                         training_time_point = epoch+batch_i/self.data_loader.n_batches
                         self.log_TrainingPoint.append(np.around(training_time_point,3))
@@ -410,8 +424,8 @@ class FeedBackGAN():
                             performance_evaluator.num_batch = batch_i
                             
                             """save the model"""
-                            model_name="models/{}_{}.h5".format(epoch, batch_i)
-                            self.G.save(model_name)
+                            model_name="{}_{}.h5".format(epoch, batch_i)
+                            self.G.save("models/"+model_name)
                             print("Epoch: {} --- Batch: {} ---- model saved".format(epoch, batch_i))
                             
                             """generation of perceptual results"""
@@ -419,7 +433,7 @@ class FeedBackGAN():
                             
                             """SSIM based evaluation on a batch of test data"""
                             #calculate mean SSIM on approximately 10% of the test data
-                            mean_sample_ssim = performance_evaluator.objective_test(200)
+                            mean_sample_ssim = performance_evaluator.objective_test(40)
                             print("Sample mean SSIM ---------%05f--------- " %(mean_sample_ssim))
                             log_sample_ssim_time_point = epoch+batch_i/self.data_loader.n_batches
                             self.log_sample_ssim_time_point.append(np.around(log_sample_ssim_time_point,3))
@@ -427,6 +441,7 @@ class FeedBackGAN():
                             
                             """logger"""
                             self.logger()
+                            
                             
                         
                         """
@@ -445,7 +460,7 @@ class FeedBackGAN():
                                 imageio.mimsave('progress/gif_image_{}.gif'.format(i), gif_images[i])
                         """
                         
-                        if batch_i % int(self.data_loader.n_batches/5) == 0 and batch_i!=0:
+                        if batch_i % int(self.data_loader.n_batches/2) == 0 and batch_i!=0:
                             """update the SSIM evolution graph saved in the file progress"""
                             
                             #update the attributes of the performance_evaluator class
@@ -474,27 +489,30 @@ class FeedBackGAN():
                             plt.title("mean SSIM vs training epochs")
                             plt.legend()
                             fig.savefig("progress/ssim_curve.png")
+                            plt.close('all')
              
-            """call the cropper utility on epoch end"""
-            #1.) generate the perceptual results
-            #2.) select bad regions
-            #3.) crop the batches
-            #4.) Measure the activations
-            #5.) Update the weighted MSE loss parameters
-            #6.) Move to the next epoch
-            
-            #generate perceptual results using the test_performace class
-            new_eval = evaluator()
-            image_paths=glob("C:\\Users\\Georgios\\Desktop\\4year project\\wespeDATA\\dped\\dped\\iphone\\test_data\\full_size_test_images\\*")
-            for i in range(10):
-                new_eval.enhance_image(image_paths[i], model_name, reference=False)
-            
-            new_cropper=cropper()
-            new_cropper.generate_ROI_regions(enhanced_path="sample images/")
-            raw_path="C:\\Users\\Georgios\\Desktop\\4year project\\wespeDATA\\dped\\dped\\iphone\\test_data\\full_size_test_images\\"
-            new_cropper.extract_patches(raw_path=raw_path)
-            new_weights=new_cropper.inspect_activation() #update the weights
-            
+                """call the cropper utility on epoch end"""
+                #1.) generate the perceptual results
+                #2.) select bad regions
+                #3.) crop the batches
+                #4.) Measure the activations
+                #5.) Update the weighted MSE loss parameters
+                #6.) Move to the next epoch
+                
+                #generate perceptual results using the test_performace class
+                new_eval = evaluator()
+                
+                for i in range(15):
+                    new_eval.enhance_image(self.test_image_paths[i], model_name, reference=False)
+                    
+                new_cropper=cropper()
+                new_cropper.generate_ROI_regions(enhanced_path="generated_images/")
+                new_cropper.extract_patches(raw_path=self.test_image_dir)
+                if new_cropper.all_square_boxes.size==0:
+                    continue
+                else:
+                    self.MSE_weights = new_cropper.inspect_activation() #update the weights
+                
             
             
             
@@ -552,7 +570,7 @@ if __name__ == '__main__':
     patch_size=(100, 100)
     epochs=15
     batch_size=2
-    sample_interval = 50 #after sample_interval batches save the model and generate sample images
+    sample_interval = 25 #after sample_interval batches save the model and generate sample images
     
     gan = FeedBackGAN(patch_size=patch_size)
     gan.train(epochs=epochs, batch_size=batch_size, sample_interval=sample_interval)

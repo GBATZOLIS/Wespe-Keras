@@ -26,7 +26,8 @@ class cropper(object):
         self.refPt = []
         self.cropping = False
         self.current_filename=""
-        self.image=0j
+        self.image=0
+        self.all_square_boxes=None
     
     def createSquareBoxes(self, rect_box, size):
         m,n,channels=rect_box.shape
@@ -80,8 +81,8 @@ class cropper(object):
             cv2.imshow("image", self.image)
     
     
-    def generate_ROI_regions(self, enhanced_path="C:\\Users\\Georgios\\Desktop\\enhanced big images\\experiment ROI\\"):
-        image_paths=glob(enhanced_path+"*.png")
+    def generate_ROI_regions(self, enhanced_path="generated_images/"):
+        image_paths=glob(enhanced_path+"*.jpg")
         for image_path in image_paths:
             self.current_filename=os.path.basename(image_path)
             self.valid_rectangles[self.current_filename]=[]
@@ -96,7 +97,7 @@ class cropper(object):
             # close all open windows
             cv2.destroyAllWindows()
         
-    def extract_patches(self, raw_path="C:\\Users\\Georgios\\Desktop\\enhanced big images\\experiment ROI\\", patch_size=100):
+    def extract_patches(self, raw_path="C:\\Users\\Georgios\\Desktop\\4year project\\wespeDATA\\dped\\dped\\iphone\\test_data\\full_size_test_images\\", patch_size=100):
         boxes=[]
         if self.valid_rectangles:
             for key,val in self.valid_rectangles.items():
@@ -129,23 +130,26 @@ class cropper(object):
             all_square_boxes=all_square_boxes[:,:,:,:3]
             self.all_square_boxes=all_square_boxes
             
-            return all_square_boxes
+            #return all_square_boxes
         
         else:
             return "Cropping operation must proceed the patch extraction"
     
     def save(self):
-        square_boxes=self.all_square_boxes
-        i=1
-        for box in square_boxes:
-            plt.imsave("C:\\Users\\Georgios\\Desktop\\enhanced big images\\experiment ROI\\100by100patches\\cropped_patch_%d.png" % (i), box)
-            i+=1
+        if self.all_square_boxes.any():
+            square_boxes=self.all_square_boxes
+            i=1
+            for box in square_boxes:
+                plt.imsave("C:\\Users\\Georgios\\Desktop\\enhanced big images\\experiment ROI\\100by100patches\\cropped_patch_%d.png" % (i), box)
+                i+=1
     
     def inspect_activation(self, model="VGG19", layer_name="block2_conv2", patch_size=100):
         vgg_model = VGG19(weights='imagenet', include_top=False, input_shape = (patch_size,patch_size,3))
         inter_VGG_model = Model(inputs=vgg_model.input, outputs=vgg_model.get_layer(layer_name).output)
+        #print(self.all_square_boxes.shape)
+        #print(type(self.all_square_boxes))
         featureMaps=inter_VGG_model.predict(self.all_square_boxes)
-        print(featureMaps.shape)
+        #print(featureMaps.shape)
         avgFilterNorms=np.zeros(featureMaps.shape[-1])
         for featureMap in featureMaps:
             filterNorms=np.zeros(featureMaps.shape[-1])
@@ -159,7 +163,7 @@ class cropper(object):
         plt.figure()
         x=np.ones(len(avgFilterNorms))+0.1*avgFilterNorms/np.amax(avgFilterNorms)
         plt.plot(x/np.amax(x))
-        return x
+        return x/np.amax(x)
         
     
         
@@ -170,7 +174,7 @@ cropper1=cropper()
 cropper1.generate_ROI_regions()
 cropper1.extract_patches()
 cropper1.save()
-cropper1.inspect_activation()
+_=cropper1.inspect_activation()
 
 
 

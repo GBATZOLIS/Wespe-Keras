@@ -118,7 +118,7 @@ class evaluator(object):
         phone_image = self.data_loader.load_img(img_path) #load image
         
         phone_image = phone_image[0]
-        #phone_image = phone_image[400:1200, 500:1300, :]
+        phone_image = phone_image[400:700, 600:900, :]
         img_shape = phone_image.shape #get dimensions to build the suitable model
         
         
@@ -149,27 +149,19 @@ class evaluator(object):
             #plt.close()
         
         else:
-            #plt.figure()
-            #plt.axis('off')
             filename=os.path.basename(img_path)
-            filename=filename.split(".")[0]+".png"
-            print(filename)
-            file_save="progress/enhanced images/"+filename
-            #Image.fromarray(np.clip(fake_dslr_image[0], 0, 1)).save(file_save)
-            #cv.imwrite(file_save,np.clip(fake_dslr_image[0], 0, 1))
+            filename=filename.split(".")[0]+".jpg"
+            file_save="generated_images/"+filename
             plt.imsave(file_save, np.clip(fake_dslr_image[0], 0, 1))
-            
-            
-            #plt.savefig("C:\\Users\\Georgios\\Desktop\\enhanced big images\\experiment ROI\\"+filename, dpi='figure', bbox_inches='tight')
-            #plt.close()
-           
         
-"""
+           
+      
 
+"""
 new_eval = evaluator()
 image_paths=glob("C:\\Users\\Georgios\\Desktop\\4year project\\wespeDATA\\dped\\dped\\iphone\\test_data\\full_size_test_images\\*")
 print(image_paths)
-model_name="2_750_check.h5"
+model_name="6_150.h5"
 for i in range(6):
     new_eval.enhance_image(image_paths[i], model_name, reference=False)
 
