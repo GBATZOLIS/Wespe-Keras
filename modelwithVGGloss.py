@@ -104,9 +104,9 @@ class WespeGAN():
         self.D_texture = self.discriminator_network(name="Texture_Discriminator", preprocess = "gray")
         
         
-        self.D_color.compile(loss='mse', loss_weights=[0.8], optimizer=optimizerD, metrics=['accuracy'])
+        self.D_color.compile(loss='mse', loss_weights=[0.5], optimizer=optimizerD, metrics=['accuracy'])
         
-        self.D_texture.compile(loss='mse', loss_weights=[0.8], optimizer=optimizerD, metrics=['accuracy'])
+        self.D_texture.compile(loss='mse', loss_weights=[0.5], optimizer=optimizerD, metrics=['accuracy'])
 
         #-------------------------
         # Construct Computational
@@ -439,7 +439,7 @@ class WespeGAN():
                             self.logger()
                          
                         
-                        if batch_i % int(self.data_loader.n_batches/5) == 0:
+                        if batch_i % int(self.data_loader.n_batches/1) == 0:
                             """update the SSIM evolution graph saved in the file progress"""
                             
                             #update the attributes of the performance_evaluator class
@@ -471,52 +471,14 @@ class WespeGAN():
                 
                         
         except KeyboardInterrupt:
-            
-            end_time=datetime.datetime.now()
-            print("Training was interrupted after %s" %(end_time-start_time))
-            print("Training interruption details: epochs: {} --- batches: {}/{}".format(epoch, batch_i, self.data_loader.n_batches))
-            print("Wait for the training final report to be generated.")
-            
-            """compute the final mean SSIM on test data and report it"""
-            #update the attributes of the performance_evaluator class
-            performance_evaluator.model = self.G
-            performance_evaluator.epoch = epoch
-            performance_evaluator.num_batch = batch_i
-            #calculate the final mean SSIM value
-            total_mean_ssim = performance_evaluator.objective_test()
-            print("Mean SSIM (entire test dataset) ---------%05f--------- " %(total_mean_ssim))
-            
-            #save the value
-            performance_evaluator.ssim_vals.append(np.abs(np.around(total_mean_ssim, decimals=3)))
-            #save the time point of the training
-            training_time_point = epoch+batch_i/self.data_loader.n_batches
-            performance_evaluator.training_points.append(np.around(training_time_point, 2))
-                            
-            
-            #display the final SSIM evolution graph
-            fig = plt.figure()
-            num_values_saved = len(performance_evaluator.ssim_vals)
-            plt.plot(np.array(performance_evaluator.training_points), np.array(performance_evaluator.ssim_vals), color='blue', label="SSIM")
-            plt.plot(np.array(performance_evaluator.training_points), np.ones(num_values_saved)*0.9, color = 'red', label="target SSIM")
-            plt.plot(np.array(performance_evaluator.training_points), np.ones(num_values_saved)*baseline_SSIM, color = 'green', label="baseline SSIM")
-            plt.title("mean SSIM vs training epochs")
-            plt.legend()
-            plt.show()
-            fig.savefig("progress/ssim_curve.png")
-            print("Final SSIM evolution graph has been displayed")
-            
-            
-            self.G.save("models/KeyboardInterrupt_{}_{}%.h5".format(epoch, int(batch_i/self.data_loader.n_batches*100)))
-            print("Model has been saved.")
-            
-            print("Training has been completed")
+            print("Training has been interrupted")
                         
         
 
 if __name__ == '__main__':
     patch_size=(100, 100)
     epochs=10
-    batch_size=20
+    batch_size=8
     sample_interval = 100 #after sample_interval batches save the model and generate sample images
     
     gan = WespeGAN(patch_size=patch_size)

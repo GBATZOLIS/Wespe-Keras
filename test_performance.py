@@ -177,7 +177,7 @@ class evaluator(object):
         phone_image = self.data_loader.load_img(img_path) #load image
         
         phone_image = phone_image[0]
-        #phone_image = phone_image[400:700, 600:900, :]
+        phone_image = phone_image[0:1500, 0:1500, :] 
         img_shape = phone_image.shape #get dimensions to build the suitable model
         
         
@@ -209,18 +209,19 @@ class evaluator(object):
         
         else:
             filename=os.path.basename(img_path)
-            filename=filename.split(".")[0]+".jpg"
+            filename=filename.split(".")[0]+".png"
             file_save="generated_images/"+filename
             plt.imsave(file_save, fake_dslr_image[0])
         
            
       
-"""
+
 new_eval = evaluator()
 image_paths=glob("C:\\Users\\Test-PC\\Desktop\\Github\\dped\\iphone\\test_data\\full_size_test_images\\*")
 #print(image_paths)
-model_name="1_800.h5"
-for i in range(17,22):
+model_name="4_0.h5"
+for i in range(len(image_paths)):
     new_eval.enhance_image(image_paths[i], model_name, reference=True)
-"""
+
+
 

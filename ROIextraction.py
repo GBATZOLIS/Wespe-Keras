@@ -82,7 +82,7 @@ class cropper(object):
     
     
     def generate_ROI_regions(self, enhanced_path="generated_images/"):
-        image_paths=glob(enhanced_path+"*.jpg")
+        image_paths=glob(enhanced_path+"*.png")
         for image_path in image_paths:
             self.current_filename=os.path.basename(image_path)
             self.valid_rectangles[self.current_filename]=[]
@@ -101,7 +101,8 @@ class cropper(object):
         boxes=[]
         if self.valid_rectangles:
             for key,val in self.valid_rectangles.items():
-                image = plt.imread(raw_path+key, format="RGB")
+                jpg_key=key.split(".")[0]+".jpg" #real test phone images have jpg format.
+                image = plt.imread(raw_path+jpg_key, format="RGB")
                 print(image.shape)
                 if len(val)>0:
                     for i in range(0,len(val),2):
@@ -160,21 +161,23 @@ class cropper(object):
         
         avgFilterNorms=avgFilterNorms/featureMaps.shape[0]
         
-        plt.figure()
-        x=np.ones(len(avgFilterNorms))+0.1*avgFilterNorms/np.amax(avgFilterNorms)
-        plt.plot(x/np.amax(x))
-        return x/np.amax(x)
+        normalised_activations = avgFilterNorms/np.amax(avgFilterNorms)
+        return normalised_activations
+    
         
     
         
     
 
+"""
 
 cropper1=cropper()
 cropper1.generate_ROI_regions()
 cropper1.extract_patches()
 cropper1.save()
 _=cropper1.inspect_activation()
+
+"""
 
 
 
