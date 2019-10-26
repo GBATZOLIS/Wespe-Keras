@@ -35,13 +35,12 @@ You don't need all the packages for the training of WESPE. However, for the full
 
 ## Preliminary experiments/results
 
-The evolution of the average SSIM value on the test data of the DPED dataset for 7 epochs of training on 1.5% of the DPED dataset:
-<div>
+The model was trained for 7 epochs on 1.5% of the training DPED data.
+
+The evolution of the average SSIM value on the test data of the DPED dataset:
 ![SSIM curve](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/visual%20results/ssim_curve.png)
-</div>
 
-Visual results after 4 epochs of training on approximately 1.5% of the DPED dataset:
-
+Visual results after 4 epochs.
 ![Image 6](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/visual%20results/Figure_6.png)
 ![Image 28](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/visual%20results/Figure_28.png)
 ![Image 17](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/visual%20results/Figure_17.png)
