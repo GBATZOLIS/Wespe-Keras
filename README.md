@@ -37,4 +37,4 @@ You don't need all the packages for the training of WESPE. However, for the full
 
 Visual results after 4 epochs on 1% of the DPED dataset:
 
-![Image 13](visual results/Figure_13.png)
+![Image 13](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/visual%20results/Figure_13.png)
