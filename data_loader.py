@@ -91,6 +91,9 @@ class DataLoader():
         data_type = "train" if not is_testing else "val"
         path_A = glob(r'data/%sA/*' % (data_type))
         path_B = glob(r'data/%sB/*' % (data_type))
+        
+        path_A=path_A[0:20000]
+        path_B=path_B[20000:40000]
 
         self.n_batches = int(min(len(path_A), len(path_B)) / batch_size)
         total_samples = self.n_batches * batch_size

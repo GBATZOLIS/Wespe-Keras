@@ -9,7 +9,16 @@ def binary_crossentropy(y_true, y_pred):
     #the input tensors are expected to be logits (not passed through softmax)
     return tf.nn.sigmoid_cross_entropy_with_logits(labels=y_true,
                                                    logits=y_pred)
+
+def L2(y_true, y_pred):
     
+    size=K.shape(y_true)
+    
+    
+    x = K.sqrt(K.sum(K.square(y_true-y_pred), axis=[1,2,3]))/(K.cast(size[1], tf.float32)*K.cast(size[2], tf.float32)*K.cast(size[3], tf.float32))
+    result = K.mean(x)
+    
+    return result
     
 def vgg_loss(y_true, y_pred):
     #print(y_true.shape)
@@ -42,7 +51,11 @@ def ssim(y_true, y_pred):
 def total_variation(y_true, y_pred):
     
     x=y_pred
-    assert K.ndim(x) == 4
+    #size=K.shape(x)
+    #dim0=K.cast(size[0], tf.float32)
+    #dim1=K.cast(size[1], tf.float32)
+    #dim2=K.cast(size[2], tf.float32)
+    #dim3=K.cast(size[3], tf.float32)
     
     img_nrows=x.shape[1]
     img_ncols=x.shape[2]

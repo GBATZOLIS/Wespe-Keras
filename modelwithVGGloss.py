@@ -19,7 +19,7 @@ import imageio #gif creation
 
 import keras.backend as K
 from keras.datasets import mnist
-from keras.layers import Input, Dense, Reshape, Flatten, Dropout, Concatenate
+from keras.layers import Input, Dense, Reshape, Flatten, Dropout, Concatenate, Add
 from keras.layers import BatchNormalization, Activation, ZeroPadding2D
 from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.convolutional import UpSampling2D, Conv2D
@@ -34,12 +34,10 @@ import os
 
 from keras.layers import Conv2D, MaxPooling2D, Input, Dense, GlobalAveragePooling2D,Flatten, BatchNormalization, LeakyReLU, Lambda, DepthwiseConv2D
 from keras.activations import relu,tanh,sigmoid
-from keras.initializers import glorot_normal
+from keras.initializers import glorot_normal, RandomNormal
 from keras.models import Model
 from preprocessing import gauss_kernel, rgb2gray, NormalizeData
-from architectures import resblock
-
-from loss_functions import  total_variation, binary_crossentropy, vgg_loss, ssim
+from loss_functions import  total_variation, binary_crossentropy, vgg_loss, ssim, L2
 #from keras_radam import RAdam
 from keras.applications.vgg19 import VGG19
 from test_performance import evaluator
@@ -59,6 +57,9 @@ class WespeGAN():
         self.channels = 3
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
         
+        # Calculate output shape of D (PatchGAN)
+        patch = int(np.ceil(self.img_shape[0] / 2**4))
+        self.disc_patch = (patch, patch, 1)
         
         #details for gif creation featuring the progress of the training.
         self.gif_batch_size=5
@@ -76,20 +77,22 @@ class WespeGAN():
         self.log_TotalVariance=[]
         self.log_sample_ssim_time_point=[]
         self.log_sample_ssim=[]
+        self.log_sample_ssim_q=[]
             
         
         # Configure data loader
         self.data_loader = DataLoader(img_res=(self.img_rows, self.img_cols))
         
         #set the blurring and texture discriminator settings
-        self.kernel_size=21
+        self.kernel_size=23
         self.std = 3
         self.blur_kernel_weights = gauss_kernel(self.kernel_size, self.std, self.channels)
         self.texture_weights = np.expand_dims(np.expand_dims(np.expand_dims(np.array([0.2989, 0.5870, 0.1140]), axis=0), axis=0), axis=-1)
         #print(self.texture_weights.shape)
         
         #set the optimiser
-        optimizer = Adam(0.0001, beta_1=0.5)
+        #optimizerG = Adam(0.0001, beta_1=0.5)
+        optimizerD = Adam(0.0002, beta_1=0.5)
         #optimizer = RAdam()
         
        
@@ -101,9 +104,9 @@ class WespeGAN():
         self.D_texture = self.discriminator_network(name="Texture_Discriminator", preprocess = "gray")
         
         
-        self.D_color.compile(loss=binary_crossentropy, optimizer=optimizer, metrics=['accuracy'])
+        self.D_color.compile(loss='mse', loss_weights=[0.8], optimizer=optimizerD, metrics=['accuracy'])
         
-        self.D_texture.compile(loss=binary_crossentropy, optimizer=optimizer, metrics=['accuracy'])
+        self.D_texture.compile(loss='mse', loss_weights=[0.8], optimizer=optimizerD, metrics=['accuracy'])
 
         #-------------------------
         # Construct Computational
@@ -111,8 +114,8 @@ class WespeGAN():
         #-------------------------
 
         # Build the generators
-        self.G = self.generator_network(name = "Forward_Generator_G")
-        self.F = self.generator_network(name = "Backward_Generator_F")
+        self.G = self.generator_network(filters = 128, name = "Forward_Generator_G")
+        self.F = self.generator_network(filters = 64, name = "Backward_Generator_F")
         
         #instantiate the VGG model
         self.vgg_model = VGG19(weights='imagenet', include_top=False, input_shape = self.img_shape)
@@ -153,44 +156,63 @@ class WespeGAN():
         
         
         #ssim_loss = DSSIMObjective()
-        self.combined.compile(loss=[binary_crossentropy, binary_crossentropy, 'mse', 'mse', total_variation],
-                            loss_weights=[0.5, 0.3, 1, 1, 0.5],
-                            optimizer=optimizer)
+        self.combined.compile(loss=['mse', 'mse', 'mae', 'mae', total_variation],
+                            loss_weights=[0.5, 0.5, 1, 1, 0.5],
+                            optimizer=optimizerD)
         
         print(self.combined.summary())
         
         
 
-    def generator_network(self, name):
+    def generator_network(self, filters, name):
+        
+        def resblock(feature_in, filters, num):
+            
+            init = RandomNormal(stddev=0.02)
+            
+            temp =  Conv2D(filters, (3, 3), strides = 1, padding = 'SAME', name = ('resblock_%d_CONV_1' %num), kernel_initializer = init)(feature_in)
+            temp = LeakyReLU(alpha=0.2)(temp)
+            temp =  Conv2D(filters, (3, 3), strides = 1, padding = 'SAME', name = ('resblock_%d_CONV_2' %num), kernel_initializer = init)(temp)
+            temp = LeakyReLU(alpha=0.2)(temp)
+            
+            return Add()([temp, feature_in])
+        
+        init = RandomNormal(stddev=0.02)
         
         image=Input(self.img_shape)
-        b1_in = Conv2D(64, (9,9), strides = 1, padding = 'SAME', name = 'CONV_1', activation = 'relu', kernel_initializer = glorot_normal())(image)
+        x = Lambda(lambda x: 2.0*x - 1.0, output_shape=lambda x:x)(image)
+        b1_in = Conv2D(filters, (9,9), strides = 1, padding = 'SAME', name = 'CONV_1', activation = 'relu', kernel_initializer = init)(x)
+        #b1_in = LeakyReLU(alpha=0.2)(b1_in)
+        b1_in = Activation('relu')(b1_in)
         #b1_in = relu()(b1_in)
         # residual blocks
-        b1_out = resblock(b1_in, 1)
-        b2_out = resblock(b1_out, 2)
-        b3_out = resblock(b2_out, 3)
-        b4_out = resblock(b3_out, 4)
+        b1_out = resblock(b1_in, filters, 1)
+        b2_out = resblock(b1_out, filters, 2)
+        b3_out = resblock(b2_out, filters, 3)
+        b4_out = resblock(b3_out, filters, 4)
         
         # conv. layers after residual blocks
-        temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_2', kernel_initializer=glorot_normal())(b4_out)
-        #temp = BatchNormalization()(temp)
-        #temp = Activation('relu')(temp)
-        temp = LeakyReLU(alpha=0.2)(temp)
+        temp = Conv2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_2', kernel_initializer=init)(b4_out)
+        #temp = BatchNormalization(axis=-1)(temp)
+        temp = Activation('relu')(temp)
+        #temp = LeakyReLU(alpha=0.2)(temp)
         
-        temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_3', kernel_initializer=glorot_normal())(b4_out)
-        #temp = BatchNormalization()(temp)
-        #temp = Activation('relu')(temp)
-        temp = LeakyReLU(alpha=0.2)(temp)
+        temp = Conv2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_3', kernel_initializer=init)(temp)
+        #temp = BatchNormalization(axis=-1)(temp)
+        temp = Activation('relu')(temp)
+        #temp = LeakyReLU(alpha=0.2)(temp)
         
-        temp = Conv2D(64, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_4', kernel_initializer=glorot_normal())(b4_out)
-        #temp = BatchNormalization()(temp)
-        #temp = Activation('relu')(temp)
-        temp = LeakyReLU(alpha=0.2)(temp)
+        temp = Conv2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_4', kernel_initializer=init)(temp)
+        #temp = BatchNormalization(axis=-1)(temp)
+        temp = Activation('relu')(temp)
+        #temp = LeakyReLU(alpha=0.2)(temp)
         
-        temp = Conv2D(3, (9,9) , strides = 1, padding = 'SAME', name = 'CONV_5', kernel_initializer=glorot_normal())(b4_out)
+        temp = Conv2D(3, (7,7) , strides = 1, padding = 'SAME', name = 'CONV_5', kernel_initializer=init)(temp)
         #temp = Activation('sigmoid')(temp)
         #temp = Lambda(lambda x: K.clip(x, 0, 1), output_shape=lambda x:x)(temp)
+        
+        temp = Activation('tanh')(temp)
+        temp = Lambda(lambda x: 0.5*x + 0.5, output_shape=lambda x:x)(temp)
         
         return Model(inputs=image, outputs=temp, name=name)
 
@@ -228,43 +250,38 @@ class WespeGAN():
         else:
             print("Discriminator-color (none)")
             image_processed = image
-            
-        # conv layer 1 
-        temp = Conv2D(48, (11,11), strides = 4, padding = 'SAME', name = 'CONV_1', kernel_initializer = glorot_normal())(image_processed)
-        temp = InstanceNormalization(axis=-1)(temp)
-        temp = LeakyReLU(alpha=0.2)(temp)
         
-        # conv layer 2
-        temp = Conv2D(96, (5,5), strides = 2, padding = 'SAME', name = 'CONV_2', kernel_initializer = glorot_normal())(temp)
-        temp = InstanceNormalization(axis=-1)(temp)
-        temp = LeakyReLU(alpha=0.2)(temp)
+        # weight initialization
+        init = RandomNormal(stddev=0.02)
+        # source image input
+        #in_image = Input(shape=image_shape)
+        # C64
+        d = Lambda(lambda x: 2.0*x - 1.0, output_shape=lambda x:x)(image_processed)
         
-        # conv layer 3
-        temp = Conv2D(192, (3,3), strides = 1, padding = 'SAME', name = 'CONV_3', kernel_initializer = glorot_normal())(temp)
-        temp = InstanceNormalization(axis=-1)(temp)
-        temp = LeakyReLU(alpha=0.2)(temp)
+        d = Conv2D(64, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
+        #d = InstanceNormalization(axis=-1)(d)
+        d = LeakyReLU(alpha=0.2)(d)
+        # C128
+        d = Conv2D(128, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
+        d = InstanceNormalization(axis=-1)(d)
+        d = LeakyReLU(alpha=0.2)(d)
+        # C256
+        d = Conv2D(256, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
+        d = InstanceNormalization(axis=-1)(d)
+        d = LeakyReLU(alpha=0.2)(d)
+        # C512
+        d = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
+        d = InstanceNormalization(axis=-1)(d)
+        d = LeakyReLU(alpha=0.2)(d)
+        # second last output layer
+        d = Conv2D(512, (4,4), padding='same', kernel_initializer=init)(d)
+        d = InstanceNormalization(axis=-1)(d)
+        d = LeakyReLU(alpha=0.2)(d)
+        # patch output
+        patch_out = Conv2D(1, (4,4), padding='same', kernel_initializer=init)(d)
+        # define model
+        return Model(inputs = image, outputs = patch_out, name = name)
         
-        # conv layer 4
-        temp = Conv2D(192, (3,3), strides = 1, padding = 'SAME', name = 'CONV_4', kernel_initializer = glorot_normal())(temp)
-        temp = InstanceNormalization(axis=-1)(temp)
-        temp = LeakyReLU(alpha=0.2)(temp)
-        
-        # conv layer 5
-        temp = Conv2D(96, (3,3), strides = 2, padding = 'SAME', name = 'CONV_5', kernel_initializer = glorot_normal())(temp)
-        temp = InstanceNormalization(axis=-1)(temp)
-        temp = LeakyReLU(alpha=0.2)(temp)
-        
-        # FC layer 1
-        fc_in = Flatten()(temp)
-        
-        fc_out = Dense(1024)(fc_in)
-        fc_out = LeakyReLU(alpha=0.2)(fc_out)
-        
-        # FC layer 2
-        logits = Dense(1)(fc_out)
-        #probability = sigmoid(logits)
-        
-        return Model(inputs=image, outputs=logits, name=name)
     
     
     def logger(self,):
@@ -294,9 +311,13 @@ class WespeGAN():
         
         fig, axs = plt.subplots(1,1)
         ax=axs
-        ax.plot(self.log_sample_ssim_time_point, self.log_sample_ssim)
+        ax.plot(self.log_sample_ssim_time_point, self.log_sample_ssim, label="Unquantised")
+        ax.plot(self.log_sample_ssim_time_point, self.log_sample_ssim_q, label="Quantised")
+        ax.legend()
         ax.set_title("sample SSIM value")
         fig.savefig("progress/sample_ssim.png")
+        
+        plt.close('all')
         
         
         
@@ -311,18 +332,20 @@ class WespeGAN():
         
         try:
             
-            gif_batch = self.data_loader.load_data(domain="A", batch_size = self.gif_batch_size, is_testing = True)
+            #gif_batch = self.data_loader.load_data(domain="A", batch_size = self.gif_batch_size, is_testing = True)
             
             # Adversarial loss ground truths
-            valid = np.ones((batch_size,1))
-            fake = np.zeros((batch_size,1))
-            
+            #valid = np.ones((batch_size,1))
+            #fake = np.zeros((batch_size,1))
+            valid = np.ones((batch_size,) + self.disc_patch)
+            fake = np.zeros((batch_size,) + self.disc_patch)
+        
             #instantiate the evaluator
             performance_evaluator = evaluator(model=self.G, img_shape=self.img_shape)
             
             #evaluate the baseline SSIM value (mean SSIM between the phone dataset and canon dataset)
-            baseline_SSIM = performance_evaluator.objective_test(baseline=True)
-            print("Baseline SSIM value: %05f" % (baseline_SSIM))
+            #baseline_SSIM = performance_evaluator.objective_test(baseline=True)
+            #print("Baseline SSIM value: %05f" % (baseline_SSIM))
     
             for epoch in range(epochs):
                 for batch_i, (imgs_A, imgs_B) in enumerate(self.data_loader.load_batch(batch_size)):
@@ -336,13 +359,6 @@ class WespeGAN():
                         # Translate images to opposite domain
                         fake_B = self.G.predict(imgs_A)
                         
-                        """
-                        #get self.gif_frames_per_sample_interval fake gif frames in sample_interval batches
-                        if batch_i % int(sample_interval/self.gif_frames_per_sample_interval)==0:
-                            fake_gif_batch = self.G.predict(gif_batch)
-                            for i in range(self.gif_batch_size):
-                                self.gif_images[i].append(fake_gif_batch[i])
-                        """
         
                         # Train the discriminators (original images = real / translated = Fake)
                         dcolor_loss_real = self.D_color.train_on_batch(imgs_B, valid)
@@ -409,33 +425,21 @@ class WespeGAN():
                             
                             """SSIM based evaluation on a batch of test data"""
                             #calculate mean SSIM on approximately 10% of the test data
-                            mean_sample_ssim = performance_evaluator.objective_test(200)
+                            mean_sample_ssim_q = performance_evaluator.objective_test(300, quantiser=True)
+                            mean_sample_ssim = performance_evaluator.objective_test(300, quantiser=False)
+                            
                             print("Sample mean SSIM ---------%05f--------- " %(mean_sample_ssim))
                             log_sample_ssim_time_point = epoch+batch_i/self.data_loader.n_batches
                             self.log_sample_ssim_time_point.append(np.around(log_sample_ssim_time_point,3))
+                            
+                            self.log_sample_ssim_q.append(mean_sample_ssim_q)
                             self.log_sample_ssim.append(mean_sample_ssim)
                             
                             """logger"""
                             self.logger()
-                            
+                         
                         
-                        """
-                        #save the gifs every two sample intervals
-                        if batch_i % (10*sample_interval) == 0 and batch_i!=0:
-                            #save the gif images every 5 sample intervals for inspection
-                             
-                            #generator predicts values just outside [0,1] in the beginning of the training. Clip it to [0,1]
-                            gif_images = np.clip(np.array(self.gif_images), 0, 1)*255.
-                            
-                            #avoid data type conversion warning
-                            gif_images = gif_images.astype('uint8') 
-                            
-                            #save the generated gifs
-                            for i in range(self.gif_batch_size):
-                                imageio.mimsave('progress/gif_image_{}.gif'.format(i), gif_images[i])
-                        """
-                        
-                        if batch_i % int(self.data_loader.n_batches/5) == 0 and batch_i!=0:
+                        if batch_i % int(self.data_loader.n_batches/5) == 0:
                             """update the SSIM evolution graph saved in the file progress"""
                             
                             #update the attributes of the performance_evaluator class
@@ -444,7 +448,7 @@ class WespeGAN():
                             performance_evaluator.num_batch = batch_i
                             
                             #calculate the mean SSIM on test data
-                            total_mean_ssim = performance_evaluator.objective_test()
+                            total_mean_ssim = performance_evaluator.objective_test(2000)
                             print("Mean SSIM (entire test dataset) ---------%05f--------- " %(total_mean_ssim))
                             
                             #save the value
@@ -460,7 +464,7 @@ class WespeGAN():
                             num_values_saved = len(performance_evaluator.ssim_vals)
                             plt.plot(np.array(performance_evaluator.training_points), np.array(performance_evaluator.ssim_vals), color='blue', label="SSIM")
                             plt.plot(np.array(performance_evaluator.training_points), np.ones(num_values_saved)*0.9, color = 'red', label="target SSIM")
-                            plt.plot(np.array(performance_evaluator.training_points), np.ones(num_values_saved)*baseline_SSIM, color = 'green', label="baseline SSIM")
+                            plt.plot(np.array(performance_evaluator.training_points), np.ones(num_values_saved)*0.75054, color = 'green', label="baseline SSIM")
                             plt.title("mean SSIM vs training epochs")
                             plt.legend()
                             fig.savefig("progress/ssim_curve.png")
@@ -501,12 +505,6 @@ class WespeGAN():
             fig.savefig("progress/ssim_curve.png")
             print("Final SSIM evolution graph has been displayed")
             
-            #Create the gif images
-            gif_images = np.clip(np.array(self.gif_images), 0, 1)*255
-            gif_images = gif_images.astype('uint8')
-            for i in range(self.gif_batch_size):
-                imageio.mimsave('progress/gif_image_{}.gif'.format(i), gif_images[i])
-            print("Gif images have been generated and saved successfully")
             
             self.G.save("models/KeyboardInterrupt_{}_{}%.h5".format(epoch, int(batch_i/self.data_loader.n_batches*100)))
             print("Model has been saved.")
@@ -517,9 +515,9 @@ class WespeGAN():
 
 if __name__ == '__main__':
     patch_size=(100, 100)
-    epochs=15
-    batch_size=2
-    sample_interval = 50 #after sample_interval batches save the model and generate sample images
+    epochs=10
+    batch_size=20
+    sample_interval = 100 #after sample_interval batches save the model and generate sample images
     
     gan = WespeGAN(patch_size=patch_size)
     gan.train(epochs=epochs, batch_size=batch_size, sample_interval=sample_interval)
