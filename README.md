@@ -35,6 +35,13 @@ You don't need all the packages for the training of WESPE. However, for the full
 
 ## Preliminary experiments/results
 
-Visual results after 4 epochs on 1% of the DPED dataset:
+Visual results after 4 epochs of training on approximately 1% of the DPED dataset:
 
+![Image 6](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/visual%20results/Figure_6.png)
+![Image 28](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/visual%20results/Figure_28.png)
+![Image 17](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/visual%20results/Figure_17.png)
+![Image 18](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/visual%20results/Figure_18.png)
+![Image 20](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/visual%20results/Figure_20.png)
+![Image 22](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/visual%20results/Figure_22.png)
+![Image 25](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/visual%20results/Figure_25.png)
 ![Image 13](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/visual%20results/Figure_13.png)
