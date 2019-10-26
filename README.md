@@ -35,6 +35,6 @@ You don't need all the packages for the training of WESPE. However, for the full
 
 ## Preliminary experiments/results
 
-Visual results after 1 and 2 epochs (about 1.5h of training time in GTX 2080-ti) are saved in the folder "sample images"
+Visual results after 4 epochs on 1% of the DPED dataset:
 
-Qualitative & quantitative results of the full training and the trained model will be released soon
+![Image 13](visual results/Figure_13.png)
