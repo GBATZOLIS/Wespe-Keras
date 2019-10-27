@@ -44,6 +44,7 @@ You don't need all the packages for the training of WESPE. However, for the full
 The model was trained for 7 epochs on 1.5% of the training DPED data.
 
 The evolution of the average SSIM value on the test data of the DPED dataset:
+
 <p align="center"> 
 <img src="https://github.com/GBATZOLIS/Wespe-Keras/blob/master/visual%20results/ssim_curve.png">
 </p>
