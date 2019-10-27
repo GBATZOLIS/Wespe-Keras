@@ -45,9 +45,8 @@ The model was trained for 7 epochs on 1.5% of the training DPED data.
 
 The evolution of the average SSIM value on the test data of the DPED dataset:
 
-<p align="center"> 
-<img src="https://github.com/GBATZOLIS/Wespe-Keras/blob/master/visual%20results/ssim_curve.png">
-</p>
+<div style="text-align:center"><img src="https://github.com/GBATZOLIS/Wespe-Keras/blob/master/visual%20results/ssim_curve.png" /></div>
+
 
 Visual results after 4 epochs.
 ![Image 6](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/preliminary%20results/Figure_6.png)
