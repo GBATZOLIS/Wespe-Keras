@@ -8,7 +8,7 @@ This repository is an unofficial implementation of the WESPE GAN in Keras (https
 
 
 
-The training image a is mapped from A->B using the Forward Generator G. The image G(a) is input to two discriminators (the first decides whether the image is a real domain B or an enhanced domain A based on its color distribution, while the second decides based on its texture). Finally, the generated image G(a) is mapped back to domain A by the backward generator F. 6 different losses are used: 2 Discriminator Adversarial, 2 Generator Adversarial, a total variation loss on the enhanced image G(a) and a cycle-consistency loss on the reconstructed image F(G(a)) (some norm of a-F(G(a) is minimised). 
+The training image x is mapped from domain A --> domain B using the Forward Generator G. The image $\tilde{y} = G(x) $ is input to two discriminators (the first decides whether the image is a real domain B or an enhanced domain A based on its color distribution, while the second decides based on its texture). Finally, the generated image G(a) is mapped back to domain A by the backward generator F. 6 different losses are used: 2 Discriminator Adversarial, 2 Generator Adversarial, a total variation loss on the enhanced image G(a) and a cycle-consistency loss on the reconstructed image F(G(a)) (some norm of a-F(G(a) is minimised). 
 
 I have modified the model proposed by the paper because some crucial training details were not provided which made it very difficult to find the right combination of all training parameters for stable GAN training. The **main modifications** are:
 
