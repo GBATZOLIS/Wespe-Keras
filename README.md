@@ -1,8 +1,10 @@
 # Wespe-Keras
 
-This repository is an unofficial implementation of WESPE paper in Keras. The paper achieves unsupervised/weakly supervised smartphone image enhancement by mapping images from the domain of phone images to the domain of DSLR images (denoted as domain A and B respectively) using an architecture inspired by the CycleGAN (https://arxiv.org/pdf/1703.10593.pdf). 
+This repository is an unofficial implementation of the WESPE GAN in Keras (https://arxiv.org/pdf/1709.01118.pdf). The paper achieves unsupervised/weakly supervised smartphone image enhancement by mapping images from the domain of phone images to the domain of DSLR images (denoted as domain A and B respectively) using an architecture inspired by the CycleGAN (https://arxiv.org/pdf/1703.10593.pdf). The architecture of Wespe is shown below.
 
-It maps a training image a from A->B using the Forward Generator G. The image G(a) is input to two discriminators (the first decides whether the image is a real domain B or an enhanced domain A based on its color distribution, while the second decides based on its texture). Finally, the generated image G(a) is mapped back to domain A by the backward generator F. 6 different losses are used: 2 Discriminator Adversarial, 2 Generator Adversarial, a total variation loss on the enhanced image G(a) and a cycle-consistency loss on the reconstructed image F(G(a)) (some norm of a-F(G(a) is minimised). 
+![Wespe Architecture](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/preliminary%20results/main_architecture.png)
+
+The training image a is mapped from A->B using the Forward Generator G. The image G(a) is input to two discriminators (the first decides whether the image is a real domain B or an enhanced domain A based on its color distribution, while the second decides based on its texture). Finally, the generated image G(a) is mapped back to domain A by the backward generator F. 6 different losses are used: 2 Discriminator Adversarial, 2 Generator Adversarial, a total variation loss on the enhanced image G(a) and a cycle-consistency loss on the reconstructed image F(G(a)) (some norm of a-F(G(a) is minimised). 
 
 I have modified the model proposed by the paper because some crucial training details were not provided which made it very difficult to find the right combination of all training parameters for stable GAN training. The **main modifications** are:
 
