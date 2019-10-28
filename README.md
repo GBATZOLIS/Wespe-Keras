@@ -26,7 +26,7 @@ I have modified the model proposed by the paper because some crucial training de
 Steps to run the training:
 
 * Put the training and test data of domains A and B under the folders data/trainA, data/trainB, data/testA and data/testB
-* run the modelwithVGGloss.py file (you can change the patch size, epochs, batch_size and other parameters in the main)
+* run the modelwithVGGloss.py file (I have tuned the hyperparameters based on preliminary testing on the DPED dataset. You will probably have to tune the hyperparameters of the model for different domain A and B datasets)
 
 ## Requirements
 You don't need all the packages for the training of WESPE. However, for the full use of the entire repository you need all the packages listed below:
