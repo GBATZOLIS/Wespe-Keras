@@ -1,8 +1,8 @@
 # Wespe-Keras
 
-<<<<<<< HEAD
+
 This repository contains an unofficial implementation of WESPE paper in Keras. There are some modifications such as the use of the Identity loss which is not used in WESPE but used in CycleGAN and the use of InstaceNormalisation layer which improved the stability of the training.
-=======
+
 This repository is an unofficial implementation of the WESPE GAN in Keras (https://arxiv.org/pdf/1709.01118.pdf). The paper achieves unsupervised/weakly supervised smartphone image enhancement by mapping images from the domain of phone images to the domain of DSLR images (denoted as domain A and B respectively) using an architecture inspired by the CycleGAN (https://arxiv.org/pdf/1703.10593.pdf). The architecture of Wespe is shown below.
 
 <p align="center"> 
@@ -51,7 +51,7 @@ Steps to run the training:
 Visual results after 1 and 2 epochs (about 1.5h of training time in GTX 2080-ti) are saved in the folder "sample images"
 
 Qualitative & quantitative results of the full training and the trained model will be released soon
-=======
+
 The model was trained for 7 epochs on 1.5% of the training DPED data.
 
 The evolution of the average SSIM value on the test data of the DPED dataset:
