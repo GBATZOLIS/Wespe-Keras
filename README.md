@@ -21,7 +21,6 @@ I have modified the model proposed by the paper because some crucial training de
 
 * **A cycle reconstruction loss in both domain A and B**. I have discovered that imposing a cycle reconstruction loss in both domain A and B significantly improved the performance of the network compared to using a cycle reconstruction loss only in domain A.
 
->>>>>>> 2a6364a9255f5454937872f4806c73514fcd68ca
 
 Image enhancement is achieved by mapping images from the domain of phone images to the domain of DSLR images (denoted as domain A and B respectively in the code).
 
@@ -31,7 +30,7 @@ Image enhancement is achieved by mapping images from the domain of phone images 
 Steps to run the training:
 
 * Put the training and test data of domains A and B under the folders data/trainA, data/trainB, data/testA and data/testB
-<<<<<<< HEAD
+
 * run the model.py file (you can change the patch size, epochs, batch_size and other parameters in the main)
 
 * run the modelwithVGGloss.py file (I have tuned the hyperparameters based on preliminary testing on the DPED dataset. You will probably have to tune the hyperparameters of the model for different domain A and B datasets)
@@ -47,7 +46,6 @@ Steps to run the training:
 
 ## Preliminary experiments/results
 
-<<<<<<< HEAD
 Visual results after 1 and 2 epochs (about 1.5h of training time in GTX 2080-ti) are saved in the folder "sample images"
 
 Qualitative & quantitative results of the full training and the trained model will be released soon
