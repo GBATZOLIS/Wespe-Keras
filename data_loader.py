@@ -91,26 +91,37 @@ class DataLoader():
         data_type = "train" if not is_testing else "val"
         path_A = glob(r'data/%sA/*' % (data_type))
         path_B = glob(r'data/%sB/*' % (data_type))
+        #path_C = glob(r'data/%sB/*' % (data_type))
         
-        path_A=path_A[0:5000]
-        path_B=path_B[5000:10000]
+        path_A=path_A[0:10000]
+        path_B=path_B[0:10000]
+        #path_C=path_C[15000:20000]
 
         self.n_batches = int(min(len(path_A), len(path_B)) / batch_size)
         total_samples = self.n_batches * batch_size
 
         # Sample n_batches * batch_size from each path list so that model sees all
         # samples from both domains
+        #random_indices = np.random.choice(len(path_A), total_samples)
+        #path_A = [path_A[index] for index in random_indices]
+        #path_B = [path_B[index] for index in random_indices]
+        #path_C = np.random.choice(path_C, total_samples, replace=False)
+        
         path_A = np.random.choice(path_A, total_samples, replace=False)
         path_B = np.random.choice(path_B, total_samples, replace=False)
 
         for i in range(self.n_batches):
             batch_A = path_A[i*batch_size:(i+1)*batch_size]
             batch_B = path_B[i*batch_size:(i+1)*batch_size]
-            imgs_A, imgs_B = [], []
+            #batch_C = path_C[i*batch_size:(i+1)*batch_size]
+            
+            imgs_A, imgs_B= [], []
+            #imgs_C=[]
             for img_A, img_B in zip(batch_A, batch_B):
                 img_A = self.imread(img_A)
                 img_B = self.imread(img_B)
-
+                #img_C = self.imread(img_C)
+                
                 #img_A = scipy.misc.imresize(img_A, self.img_res)
                 #img_B = scipy.misc.imresize(img_B, self.img_res)
                 if (img_A.shape[0]>self.img_res[0]) or (img_A.shape[1]>self.img_res[1]):
@@ -123,9 +134,11 @@ class DataLoader():
 
                 imgs_A.append(img_A)
                 imgs_B.append(img_B)
+                #imgs_C.append(img_C)
 
             imgs_A = np.array(imgs_A)/255
             imgs_B = np.array(imgs_B)/255
+            #imgs_C = np.array(imgs_C)/255
 
             yield imgs_A, imgs_B
 

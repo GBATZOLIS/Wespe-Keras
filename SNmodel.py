@@ -1,26 +1,13 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Sep 26 15:03:33 2019
-
-@author: Georgios
-"""
-
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Sep 18 17:12:49 2019
-
-@author: Georgios
-"""
-
+from __future__ import print_function, division
 import scipy
 
 from keras_contrib.layers.normalization.instancenormalization import InstanceNormalization
 from keras_contrib.losses.dssim import DSSIMObjective
-
+from SN import ConvSN2D, DenseSN
 
 # define layer
 #layer = InstanceNormalization(axis=-1)
-from glob import glob
+
 import imageio #gif creation
 
 import keras.backend as K
@@ -40,12 +27,11 @@ import os
 
 from keras.layers import Conv2D, MaxPooling2D, Input, Dense, GlobalAveragePooling2D,Flatten, BatchNormalization, LeakyReLU, Lambda, DepthwiseConv2D
 from keras.activations import relu,tanh,sigmoid
-from keras.initializers import glorot_normal, RandomNormal
+from keras.initializers import RandomNormal, Orthogonal
 from keras.models import Model
 from preprocessing import gauss_kernel, rgb2gray, NormalizeData
-#from architectures import resblock
 
-from loss_functions import  total_variation, binary_crossentropy, vgg_loss, ssim
+from loss_functions import  total_variation, binary_crossentropy, vgg_loss, ssim, hinge_D_loss, hinge_G_loss
 #from keras_radam import RAdam
 from keras.applications.vgg19 import VGG19
 from test_performance import evaluator
@@ -56,10 +42,8 @@ get_ipython().run_line_magic('matplotlib', 'qt')
 import warnings
 warnings.filterwarnings("ignore")
 
-from ROIextraction import cropper
 
-
-class FeedBackGAN():
+class WespeGAN():
     def __init__(self, patch_size=(100,100)):
         # Input shape
         self.img_rows = patch_size[0]
@@ -67,21 +51,11 @@ class FeedBackGAN():
         self.channels = 3
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
         
-        # Calculate output shape of D (PatchGAN)
-        patch = int(np.ceil(self.img_shape[0] / 2**4))
-        self.disc_patch = (patch, patch, 1)
-        
-        #Feedback Settings
-        #test image paths
-        self.test_image_dir="data/test phone images/"
-        self.test_image_paths=glob(self.test_image_dir+"*")
-        self.MSE_weights=np.ones(128)
-        self.sum_of_weights=np.sum(self.MSE_weights)
         
         #details for gif creation featuring the progress of the training.
-        #self.gif_batch_size=5
-        #self.gif_frames_per_sample_interval=3
-        #self.gif_images = [[] for i in range(self.gif_batch_size)]
+        self.gif_batch_size=10
+        self.gif_frames_per_sample_interval=5
+        self.gif_images = [[] for i in range(self.gif_batch_size)]
         
         #manual logs
         #this will be changed using tensorboard
@@ -93,26 +67,25 @@ class FeedBackGAN():
         self.log_ReconstructionLossA=[]
         self.log_ReconstructionLossB=[]
         self.log_TotalVariance=[]
-        self.log_sample_ssim_time_point=[]
+        
         self.log_sample_ssim=[]
-            
+        self.log_sample_ssim_training_point=[]
         
         # Configure data loader
         self.data_loader = DataLoader(img_res=(self.img_rows, self.img_cols))
         
         #set the blurring and texture discriminator settings
-        self.kernel_size=23
+        self.kernel_size=21
         self.std = 3
         self.blur_kernel_weights = gauss_kernel(self.kernel_size, self.std, self.channels)
         self.texture_weights = np.expand_dims(np.expand_dims(np.expand_dims(np.array([0.2989, 0.5870, 0.1140]), axis=0), axis=0), axis=-1)
         #print(self.texture_weights.shape)
         
         #set the optimiser
-        optimizer = Adam(0.0002, beta_1=0.5)
+        #optimizer = Adam(0.0002, beta_1=0.5)
+        optimizerD = Adam(0.0002, beta_1=0.5)
+        #optimizerG = Adam(0.0001, beta_1=0.5)
         #optimizer = RAdam()
-        
-       
-        
         
         # Build and compile the discriminators
         
@@ -120,40 +93,38 @@ class FeedBackGAN():
         self.D_texture = self.discriminator_network(name="Texture_Discriminator", preprocess = "gray")
         
         
-        self.D_color.compile(loss='mse', loss_weights=[0.5], optimizer=optimizer, metrics=['accuracy'])
+        self.D_color.compile(loss='mae', loss_weights=[0.5], optimizer=optimizerD, metrics=['accuracy'])
         
-        self.D_texture.compile(loss='mse', loss_weights=[0.5], optimizer=optimizer, metrics=['accuracy'])
+        self.D_texture.compile(loss='mae', loss_weights=[0.5], optimizer=optimizerD, metrics=['accuracy'])
 
         #-------------------------
         # Construct Computational
         #   Graph of Generators
         #-------------------------
 
-        # Build the generators
-        self.G = self.generator_network(filters = 128, name = "Forward_Generator_G")
-        self.F = self.generator_network(filters = 64, name = "Backward_Generator_F")
         
-        #instantiate the VGG model
         self.vgg_model = VGG19(weights='imagenet', include_top=False, input_shape = self.img_shape)
-        self.layer_name="block2_conv2" #128 filters in the feature map
+        self.layer_name="block2_conv2"
         self.inter_VGG_model = Model(inputs=self.vgg_model.input, outputs=self.vgg_model.get_layer(self.layer_name).output)
-        
         self.inter_VGG_model.trainable=False
         
+        # Build the generators
+        self.G = self.generator_network(filters=64, name = "Forward_Generator_G")
+        self.F = self.generator_network(filters=64, name = "Backward_Generator_F")
+
         # Input images from both domains
         img_A = Input(shape=self.img_shape)
-        #img_A_vgg = vgg_model(img_A)
         img_B = Input(shape=self.img_shape)
 
         # Translate images to the other domain
         fake_B = self.G(img_A)
-        #identity_B = self.G(img_B)
         fake_A = self.F(img_B)
+        #identity_B = self.G(img_B)
+        #fake_A = self.g_BA(img_B)
         
         # Translate images back to original domain
         reconstr_A = self.F(fake_B)
         reconstr_A_vgg = self.inter_VGG_model(reconstr_A)
-        
         reconstr_B = self.G(fake_A)
         reconstr_B_vgg = self.inter_VGG_model(reconstr_B)
         
@@ -167,50 +138,43 @@ class FeedBackGAN():
         valid_A_texture = self.D_texture(fake_B)
 
         # Combined model trains generators to fool discriminators
-        self.combined = Model(inputs=[img_A,img_B],
+        self.combined = Model(inputs=[img_A, img_B],
                               outputs=[valid_A_color, valid_A_texture, reconstr_A_vgg, reconstr_B_vgg, fake_B])
         
         
         #ssim_loss = DSSIMObjective()
-        self.combined.compile(loss=['mse', 'mse', self.weighted_MSE, self.weighted_MSE, total_variation],
+        self.combined.compile(loss=['mae', 'mae', 'mae', 'mae', total_variation],
                             loss_weights=[0.5, 0.5, 1, 1, 0.5],
-                            optimizer=optimizer)
+                            optimizer=optimizerD)
         
         print(self.combined.summary())
         
-    
-    def weighted_MSE(self, y_true, y_pred):
-        result=0
-        #filters=shape[3]
-        
-        for i in range(128):
-            result+=self.MSE_weights[i]*K.mean(K.square(y_true[:,:,:,i]-y_pred[:,:,:,i]))
-        
-        result=result/self.sum_of_weights
-        
-        return result
     
     def generator_network(self, filters, name):
         
         def resblock(feature_in, filters, num):
             
-            init = RandomNormal(stddev=0.02)
+            #init = RandomNormal(stddev=0.02)
+            init = Orthogonal(gain=1)
             
-            temp =  Conv2D(filters, (3, 3), strides = 1, padding = 'SAME', name = ('resblock_%d_CONV_1' %num), kernel_initializer = init)(feature_in)
+            temp =  ConvSN2D(filters, (3, 3), strides = 1, padding = 'SAME', name = ('resblock_%d_CONV_1' %num), kernel_initializer = init)(feature_in)
+            #temp = BatchNormalization(axis=-1)(temp)
             temp = LeakyReLU(alpha=0.2)(temp)
-            temp =  Conv2D(filters, (3, 3), strides = 1, padding = 'SAME', name = ('resblock_%d_CONV_2' %num), kernel_initializer = init)(temp)
+            
+            temp =  ConvSN2D(filters, (3, 3), strides = 1, padding = 'SAME', name = ('resblock_%d_CONV_2' %num), kernel_initializer = init)(temp)
+            #temp = BatchNormalization(axis=-1)(temp)
             temp = LeakyReLU(alpha=0.2)(temp)
             
             return Add()([temp, feature_in])
         
-        init = RandomNormal(stddev=0.02)
+        #init = RandomNormal(stddev=0.02)
+        init = Orthogonal(gain=1)
         
         image=Input(self.img_shape)
-        x = Lambda(lambda x: 2.0*x - 1.0, output_shape=lambda x:x)(image)
-        b1_in = Conv2D(filters, (9,9), strides = 1, padding = 'SAME', name = 'CONV_1', activation = 'relu', kernel_initializer = init)(x)
-        #b1_in = LeakyReLU(alpha=0.2)(b1_in)
-        b1_in = Activation('relu')(b1_in)
-        #b1_in = relu()(b1_in)
+        y = Lambda(lambda x: 2.0*x - 1.0, output_shape=lambda x:x)(image)
+        
+        b1_in = ConvSN2D(filters, (9,9), strides = 1, padding = 'SAME', name = 'CONV_1', activation = 'relu', kernel_initializer = init)(y)
+        b1_in = LeakyReLU(alpha=0.2)(b1_in)
         # residual blocks
         b1_out = resblock(b1_in, filters, 1)
         b2_out = resblock(b1_out, filters, 2)
@@ -218,26 +182,21 @@ class FeedBackGAN():
         b4_out = resblock(b3_out, filters, 4)
         
         # conv. layers after residual blocks
-        temp = Conv2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_2', kernel_initializer=init)(b4_out)
+        temp = ConvSN2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_2', kernel_initializer=init)(b4_out)
         #temp = BatchNormalization(axis=-1)(temp)
-        temp = Activation('relu')(temp)
-        #temp = LeakyReLU(alpha=0.2)(temp)
+        temp = LeakyReLU(alpha=0.2)(temp)
         
-        temp = Conv2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_3', kernel_initializer=init)(temp)
+        temp = ConvSN2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_3', kernel_initializer=init)(temp)
         #temp = BatchNormalization(axis=-1)(temp)
-        temp = Activation('relu')(temp)
-        #temp = LeakyReLU(alpha=0.2)(temp)
+        temp = LeakyReLU(alpha=0.2)(temp)
         
-        temp = Conv2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_4', kernel_initializer=init)(temp)
+        temp = ConvSN2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_4', kernel_initializer=init)(temp)
         #temp = BatchNormalization(axis=-1)(temp)
-        temp = Activation('relu')(temp)
-        #temp = LeakyReLU(alpha=0.2)(temp)
+        temp = LeakyReLU(alpha=0.2)(temp)
         
-        temp = Conv2D(3, (7,7) , strides = 1, padding = 'SAME', name = 'CONV_5', kernel_initializer=init)(temp)
-        #temp = Activation('sigmoid')(temp)
-        #temp = Lambda(lambda x: K.clip(x, 0, 1), output_shape=lambda x:x)(temp)
-        
+        temp = Conv2D(3, (9,9) , strides = 1, padding = 'SAME', name = 'CONV_5', kernel_initializer=init)(temp)
         temp = Activation('tanh')(temp)
+        
         temp = Lambda(lambda x: 0.5*x + 0.5, output_shape=lambda x:x)(temp)
         
         return Model(inputs=image, outputs=temp, name=name)
@@ -245,6 +204,9 @@ class FeedBackGAN():
 
     def discriminator_network(self, name, preprocess = 'gray'):
         #The main modification from the original approach is the use of the InstanceNormalisation layer
+        
+        #init = RandomNormal(stddev=0.02)
+        init = Orthogonal(gain=1)
         
         image = Input(self.img_shape)
         
@@ -276,37 +238,45 @@ class FeedBackGAN():
         else:
             print("Discriminator-color (none)")
             image_processed = image
-        
-        # weight initialization
-        init = RandomNormal(stddev=0.02)
-        # source image input
-        #in_image = Input(shape=image_shape)
-        # C64
+            
+        # conv layer 1 
         d = Lambda(lambda x: 2.0*x - 1.0, output_shape=lambda x:x)(image_processed)
+        temp = ConvSN2D(48, (11,11), strides = 4, padding = 'SAME', name = 'CONV_1', kernel_initializer = init)(d)
+        #temp = BatchNormalization(axis=-1)(temp)
+        temp = LeakyReLU(alpha=0.2)(temp)
         
-        d = Conv2D(64, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
-        #d = InstanceNormalization(axis=-1)(d)
-        d = LeakyReLU(alpha=0.2)(d)
-        # C128
-        d = Conv2D(128, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
-        d = InstanceNormalization(axis=-1)(d)
-        d = LeakyReLU(alpha=0.2)(d)
-        # C256
-        d = Conv2D(256, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
-        d = InstanceNormalization(axis=-1)(d)
-        d = LeakyReLU(alpha=0.2)(d)
-        # C512
-        d = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
-        d = InstanceNormalization(axis=-1)(d)
-        d = LeakyReLU(alpha=0.2)(d)
-        # second last output layer
-        d = Conv2D(512, (4,4), padding='same', kernel_initializer=init)(d)
-        d = InstanceNormalization(axis=-1)(d)
-        d = LeakyReLU(alpha=0.2)(d)
-        # patch output
-        patch_out = Conv2D(1, (4,4), padding='same', kernel_initializer=init)(d)
-        # define model
-        return Model(inputs = image, outputs = patch_out, name = name)
+        # conv layer 2
+        temp = ConvSN2D(128, (5,5), strides = 2, padding = 'SAME', name = 'CONV_2', kernel_initializer = init)(temp)
+        #temp = BatchNormalization(axis=-1)(temp)
+        temp = LeakyReLU(alpha=0.2)(temp)
+        
+        # conv layer 3
+        temp = ConvSN2D(192, (3,3), strides = 1, padding = 'SAME', name = 'CONV_3', kernel_initializer = init)(temp)
+        #temp = BatchNormalization(axis=-1)(temp)
+        temp = LeakyReLU(alpha=0.2)(temp)
+        
+        # conv layer 4
+        temp = ConvSN2D(192, (3,3), strides = 1, padding = 'SAME', name = 'CONV_4', kernel_initializer = init)(temp)
+        #temp = BatchNormalization(axis=-1)(temp)
+        temp = LeakyReLU(alpha=0.2)(temp)
+        
+        # conv layer 5
+        temp = ConvSN2D(128, (3,3), strides = 2, padding = 'SAME', name = 'CONV_5', kernel_initializer = init)(temp)
+        #temp = BatchNormalization(axis=-1)(temp)
+        temp = LeakyReLU(alpha=0.2)(temp)
+        
+        # FC layer 1
+        fc_in = Flatten()(temp)
+        
+        fc_out = Dense(512)(fc_in)
+        fc_out = LeakyReLU(alpha=0.2)(fc_out)
+        
+        # FC layer 2
+        logits = Dense(1)(fc_out)
+        #prob = Activation('sigmoid')(logits)
+        #probability = sigmoid(logits)
+        
+        return Model(inputs=image, outputs=logits, name=name)
     
     
     def logger(self,):
@@ -325,8 +295,8 @@ class FeedBackGAN():
         ax.set_title("Generator Adv losses")
         
         ax = axs[1,0]
-        ax.plot(self.log_TrainingPoint, self.log_ReconstructionLossA, label="reconstruction A" )
-        ax.plot(self.log_TrainingPoint, self.log_ReconstructionLossB, label="reconstruction B" )
+        ax.plot(self.log_TrainingPoint, self.log_ReconstructionLossA, label="domain A")
+        ax.plot(self.log_TrainingPoint, self.log_ReconstructionLossB, label="domain B")
         ax.set_title("Cycle-Content loss")
         
         ax = axs[1,1]
@@ -337,11 +307,17 @@ class FeedBackGAN():
         
         fig, axs = plt.subplots(1,1)
         ax=axs
-        ax.plot(self.log_sample_ssim_time_point, self.log_sample_ssim)
+        training_points=len(self.log_sample_ssim_training_point)
+        ax.plot(self.log_sample_ssim_training_point, self.log_sample_ssim, label="sample ssim")
+        ax.plot(self.log_sample_ssim_training_point, [0.750454]*training_points, label="baseline")
+        ax.plot(self.log_sample_ssim_training_point, [0.9]*training_points, label="target")
+        ax.legend()
         ax.set_title("sample SSIM value")
         fig.savefig("progress/sample_ssim.png")
         
         plt.close('all')
+        
+        
         
         
     
@@ -353,17 +329,9 @@ class FeedBackGAN():
         start_time = datetime.datetime.now()
         
         try:
-            
-            #gif_batch = self.data_loader.load_data(domain="A", batch_size = self.gif_batch_size, is_testing = True)
-            
             # Adversarial loss ground truths
-            #valid = np.ones((batch_size,1))
-            #fake = np.zeros((batch_size,1))
-            
-            #Adversarial ground truth for patches corresponding to certain receptive fields
-            valid = np.ones((batch_size,) + self.disc_patch)
-            fake = np.zeros((batch_size,) + self.disc_patch)
-            
+            valid = np.ones((batch_size,1))
+            fake = np.zeros((batch_size,1))
             
             #instantiate the evaluator
             performance_evaluator = evaluator(model=self.G, img_shape=self.img_shape)
@@ -371,7 +339,8 @@ class FeedBackGAN():
             #evaluate the baseline SSIM value (mean SSIM between the phone dataset and canon dataset)
             #baseline_SSIM = performance_evaluator.objective_test(baseline=True)
             #print("Baseline SSIM value: %05f" % (baseline_SSIM))
-    
+            
+            Dsteps=2
             for epoch in range(epochs):
                 for batch_i, (imgs_A, imgs_B) in enumerate(self.data_loader.load_batch(batch_size)):
                     
@@ -380,44 +349,55 @@ class FeedBackGAN():
                         # ----------------------
                         #  Train Discriminators
                         # ----------------------
-        
-                        # Translate images to opposite domain
-                        fake_B = self.G.predict(imgs_A)
                         
-                        """
-                        #get self.gif_frames_per_sample_interval fake gif frames in sample_interval batches
-                        if batch_i % int(sample_interval/self.gif_frames_per_sample_interval)==0:
-                            fake_gif_batch = self.G.predict(gif_batch)
-                            for i in range(self.gif_batch_size):
-                                self.gif_images[i].append(fake_gif_batch[i])
-                        """
-        
-                        # Train the discriminators (original images = real / translated = Fake)
-                        dcolor_loss_real = self.D_color.train_on_batch(imgs_B, valid)
-                        dcolor_loss_fake = self.D_color.train_on_batch(fake_B, fake)
-                        dcolor_loss = 0.5 * np.add(dcolor_loss_real, dcolor_loss_fake)
-                        self.log_D_colorloss.append(dcolor_loss[0])
+                        dcolor_avg_loss=0
+                        dtexture_avg_loss=0
+                        for i in range(Dsteps):
+                            # Translate images to opposite domain
+                            disc_imgs_A = imgs_A[i*int(batch_size/Dsteps): (i+1)*int(batch_size/Dsteps)]
+                            disc_imgs_B = imgs_B[i*int(batch_size/Dsteps): (i+1)*int(batch_size/Dsteps)]
+                            disc_valid =  valid[i*int(batch_size/Dsteps): (i+1)*int(batch_size/Dsteps)]
+                            disc_fake = fake[i*int(batch_size/Dsteps): (i+1)*int(batch_size/Dsteps)]
+                            
+                            disc_fake_B = self.G.predict(disc_imgs_A)
+            
+                            # Train the discriminators (original images = real / translated = Fake)
+                            dcolor_loss_real = self.D_color.train_on_batch(disc_imgs_B, disc_valid)
+                            dcolor_loss_fake = self.D_color.train_on_batch(disc_fake_B, disc_fake)
+                            dcolor_loss = 0.5 * np.add(dcolor_loss_real, dcolor_loss_fake)
+                            dcolor_avg_loss+=dcolor_loss
+                            
+                            
+            
+                            dtexture_loss_real = self.D_texture.train_on_batch(disc_imgs_B, disc_valid)
+                            dtexture_loss_fake = self.D_texture.train_on_batch(disc_fake_B, disc_fake)
+                            dtexture_loss = 0.5 * np.add(dtexture_loss_real, dtexture_loss_fake)
+                            dtexture_avg_loss+=dtexture_loss
                         
-        
-                        dtexture_loss_real = self.D_texture.train_on_batch(imgs_B, valid)
-                        dtexture_loss_fake = self.D_texture.train_on_batch(fake_B, fake)
-                        dtexture_loss = 0.5 * np.add(dtexture_loss_real, dtexture_loss_fake)
-                        self.log_D_textureloss.append(dtexture_loss[0])
-        
+                        
+                        dcolor_avg_loss = dcolor_avg_loss/Dsteps
+                        dtexture_avg_loss = dtexture_avg_loss/Dsteps
+                        
+                        self.log_D_colorloss.append(dcolor_avg_loss[0])
+                        self.log_D_textureloss.append(dtexture_avg_loss[0])
+                        
                         # Total disciminator loss
-                        d_loss = 0.5 * np.add(dcolor_loss, dtexture_loss)
-                        #d_loss = dcolor_loss
+                        d_loss = 0.5 * np.add(dcolor_avg_loss, dtexture_avg_loss)
+                        
         
                         # ------------------
                         #  Train Generators
                         # ------------------
-        
-                        # Train the generators
-                        imgs_A_vgg = self.inter_VGG_model.predict(imgs_A)
-                        imgs_B_vgg = self.inter_VGG_model.predict(imgs_B)
                         
-                        g_loss = self.combined.train_on_batch([imgs_A,imgs_B], [valid, valid,
-                                                                imgs_A_vgg, imgs_B_vgg, imgs_A])
+                        gen_imgs_A=imgs_A[: int(batch_size/Dsteps)]
+                        gen_imgs_B=imgs_B[: int(batch_size/Dsteps)]
+                        gen_valid = valid[: int(batch_size/Dsteps)]
+                        imgs_A_vgg = self.inter_VGG_model.predict(gen_imgs_A)
+                        imgs_B_vgg = self.inter_VGG_model.predict(gen_imgs_B)
+                        
+                        # Train the generators
+                        g_loss = self.combined.train_on_batch([gen_imgs_A, gen_imgs_B], [gen_valid, gen_valid,
+                                                                imgs_A_vgg, imgs_B_vgg, gen_imgs_A])
                         
                         self.log_G_colorloss.append(g_loss[1])
                         self.log_G_textureloss.append(g_loss[2])
@@ -444,14 +424,14 @@ class FeedBackGAN():
                         # If at save interval => save generated image samples
                         if batch_i % sample_interval == 0:
                             
+                            
                             """update the attributes of the performance_evaluator class"""
                             performance_evaluator.model = self.G
                             performance_evaluator.epoch = epoch
                             performance_evaluator.num_batch = batch_i
                             
                             """save the model"""
-                            model_name="{}_{}.h5".format(epoch, batch_i)
-                            self.G.save("models/"+model_name)
+                            self.G.save("models/{}_{}.h5".format(epoch, batch_i))
                             print("Epoch: {} --- Batch: {} ---- model saved".format(epoch, batch_i))
                             
                             """generation of perceptual results"""
@@ -460,33 +440,15 @@ class FeedBackGAN():
                             """SSIM based evaluation on a batch of test data"""
                             #calculate mean SSIM on approximately 10% of the test data
                             mean_sample_ssim = performance_evaluator.objective_test(500)
+                            self.log_sample_ssim.append(mean_sample_ssim)
                             print("Sample mean SSIM ---------%05f--------- " %(mean_sample_ssim))
                             log_sample_ssim_time_point = epoch+batch_i/self.data_loader.n_batches
-                            self.log_sample_ssim_time_point.append(np.around(log_sample_ssim_time_point,3))
-                            self.log_sample_ssim.append(mean_sample_ssim)
+                            self.log_sample_ssim_training_point.append(np.around(log_sample_ssim_time_point,3))
                             
                             """logger"""
                             self.logger()
-                            
-                            
                         
-                        """
-                        #save the gifs every two sample intervals
-                        if batch_i % (10*sample_interval) == 0 and batch_i!=0:
-                            #save the gif images every 5 sample intervals for inspection
-                             
-                            #generator predicts values just outside [0,1] in the beginning of the training. Clip it to [0,1]
-                            gif_images = np.clip(np.array(self.gif_images), 0, 1)*255.
-                            
-                            #avoid data type conversion warning
-                            gif_images = gif_images.astype('uint8') 
-                            
-                            #save the generated gifs
-                            for i in range(self.gif_batch_size):
-                                imageio.mimsave('progress/gif_image_{}.gif'.format(i), gif_images[i])
-                        """
-                        
-                        if batch_i % int(self.data_loader.n_batches/2) == 0 and not(epoch==0 and batch_i==0):
+                        if batch_i % int(self.data_loader.n_batches/4) == 0 and not(epoch==0 and batch_i==0):
                             """update the SSIM evolution graph saved in the file progress"""
                             
                             #update the attributes of the performance_evaluator class
@@ -515,68 +477,23 @@ class FeedBackGAN():
                             plt.title("mean SSIM vs training epochs")
                             plt.legend()
                             fig.savefig("progress/ssim_curve.png")
-                            plt.close('all')
-             
-                """call the cropper utility on epoch end"""
-                #1.) generate the perceptual results
-                #2.) select bad regions
-                #3.) crop the batches
-                #4.) Measure the activations
-                #5.) Update the weighted MSE loss parameters
-                #6.) Move to the next epoch
                 
-                #generate perceptual results using the test_performace class
-                new_eval = evaluator()
-                
-                for i in range(10):
-                    new_eval.enhance_image(self.test_image_paths[i], model_name, reference=False)
-                    
-                #instantiate the cropper class located in the ROI extraction file
-                new_cropper=cropper()
-                #prompt the user to select the regions of the generated images that they think are not enhanced properly
-                new_cropper.generate_ROI_regions(enhanced_path="generated_images/")
-                
-                #check whether feedback was given
-                feedback=False
-                for key in new_cropper.valid_rectangles:
-                    if new_cropper.valid_rectangles[key]:
-                        feedback=True
-                    
-                if feedback==False:
-                    #use the current mse weights if there is no feedback given
-                    continue
-                else:
-                    #if feedback from the human supervisor was given, then:
-                    
-                    #extract the selected patches from the original images
-                    new_cropper.extract_patches(raw_path=self.test_image_dir)
-                    
-                    #use those patches to find the activations of the selected layer of the VGG19 network
-                    normalised_activations = new_cropper.inspect_activation() #get the normalised activations: vector range [0,1]
-                    
-                    #parameters alpha and beta determine how much the weights are influenced by the human feeback
-                    #decreasing beta and increasing alpha increases the responsiveness to human feedback
-                    #large alpha values destablise the training
-                    
-                    alpha=0.8
-                    beta=0.2
-                    #update the new MSE weights using the activations of the inadequately reconstructed patches
-                    self.MSE_weights = alpha * self.MSE_weights + beta * normalised_activations
-                    self.sum_of_weights = np.sum(self.MSE_weights) #get the sum of the MSE weights to normalise the weighted MSE loss properly
-                    
-            
-            
-            
                         
         except KeyboardInterrupt:
-            print("Training has been interrupted")
+            
+            end_time=datetime.datetime.now()
+            print("Training was interrupted after %s" %(end_time-start_time))
+            print("Training interruption details: epochs: {} --- batches: {}/{}".format(epoch, batch_i, self.data_loader.n_batches))
+            print("Wait for the training final report to be generated.")
+            
+                        
         
 
 
 patch_size=(100, 100)
-epochs=15
-batch_size=8
-sample_interval =100 #after sample_interval batches save the model and generate sample images
+epochs=10
+batch_size=32
+sample_interval = 50 #after sample_interval batches save the model and generate sample images
     
-gan = FeedBackGAN(patch_size=patch_size)
+gan = WespeGAN(patch_size=patch_size)
 gan.train(epochs=epochs, batch_size=batch_size, sample_interval=sample_interval)

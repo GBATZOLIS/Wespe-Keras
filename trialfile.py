@@ -70,5 +70,8 @@ def generator_network(name):
         
         return model
 
-new=generator_network("sp")
-new.summary()
+import numpy as np
+
+x=np.array([1,30, 210, 23210, 3, 20])
+y=np.array([1,3])
+print(x[y])

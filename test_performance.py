@@ -20,8 +20,11 @@ from preprocessing import NormalizeData
 from glob import glob
 import os
 from skimage.measure import compare_ssim as ssim
+from keras.initializers import  Orthogonal, RandomNormal
+from SN import *
 #from skvideo.measure import niqe
 import cv2 as cv
+from loss_functions import SSIM
 
 from IPython import get_ipython
 get_ipython().run_line_magic('matplotlib', 'qt')
@@ -30,20 +33,25 @@ def generator_network(img_shape, filters, name):
         
         def resblock(feature_in, filters, num):
             
-            temp =  Conv2D(filters, (3, 3), strides = 1, padding = 'SAME', name = ('resblock_%d_CONV_1' %num))(feature_in)
-            temp = LeakyReLU(alpha=0.2)(temp)
-            temp =  Conv2D(filters, (3, 3), strides = 1, padding = 'SAME', name = ('resblock_%d_CONV_2' %num))(temp)
-            temp = LeakyReLU(alpha=0.2)(temp)
+            init = RandomNormal(stddev=0.02)
+            
+            temp =  Conv2D(filters, (3, 3), strides = 1, padding = 'SAME', name = ('resblock_%d_CONV_1' %num), kernel_initializer = init)(feature_in)
+            temp = BatchNormalization(axis=-1)(temp)
+            temp = Activation('relu')(temp)
+            
+            temp =  Conv2D(filters, (3, 3), strides = 1, padding = 'SAME', name = ('resblock_%d_CONV_2' %num), kernel_initializer = init)(temp)
+            temp = BatchNormalization(axis=-1)(temp)
+            temp = Activation('relu')(temp)
             
             return Add()([temp, feature_in])
         
+        init = RandomNormal(stddev=0.02)
         
         image=Input(img_shape)
-        x = Lambda(lambda x: 2.0*x - 1.0, output_shape=lambda x:x)(image)
-        b1_in = Conv2D(filters, (9,9), strides = 1, padding = 'SAME', name = 'CONV_1', activation = 'relu')(x)
-        #b1_in = LeakyReLU(alpha=0.2)(b1_in)
+        y = Lambda(lambda x: 2.0*x - 1.0, output_shape=lambda x:x)(image)
+        
+        b1_in = Conv2D(filters, (9,9), strides = 1, padding = 'SAME', name = 'CONV_1', activation = 'relu', kernel_initializer = init)(y)
         b1_in = Activation('relu')(b1_in)
-        #b1_in = relu()(b1_in)
         # residual blocks
         b1_out = resblock(b1_in, filters, 1)
         b2_out = resblock(b1_out, filters, 2)
@@ -51,21 +59,26 @@ def generator_network(img_shape, filters, name):
         b4_out = resblock(b3_out, filters, 4)
         
         # conv. layers after residual blocks
-        temp = Conv2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_2')(b4_out)
+        temp = Conv2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_2', kernel_initializer=init)(b4_out)
+        #temp = BatchNormalization(axis=-1)(temp)
         temp = Activation('relu')(temp)
         
-        temp = Conv2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_3')(temp)
+        temp = Conv2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_3', kernel_initializer=init)(temp)
+        #temp = BatchNormalization(axis=-1)(temp)
         temp = Activation('relu')(temp)
         
-        temp = Conv2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_4')(temp)
+        temp = Conv2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_4', kernel_initializer=init)(temp)
+        #temp = BatchNormalization(axis=-1)(temp)
         temp = Activation('relu')(temp)
         
-        temp = Conv2D(3, (7,7) , strides = 1, padding = 'SAME', name = 'CONV_5')(temp)
-        
+        temp = Conv2D(3, (9,9) , strides = 1, padding = 'SAME', name = 'CONV_5', kernel_initializer=init)(temp)
         temp = Activation('tanh')(temp)
+        
         temp = Lambda(lambda x: 0.5*x + 0.5, output_shape=lambda x:x)(temp)
         
         return Model(inputs=image, outputs=temp, name=name)
+    
+    
 
 
 class evaluator(object):
@@ -74,10 +87,10 @@ class evaluator(object):
         
         self.data_loader = DataLoader()
         self.img_shape = img_shape
-        
+        self.ssim_evaluator = SSIM()
         if model_name:
             self.model_name = model_name
-            self.model = generator_network(self.img_shape, name="Test_Gen") #this has to be the same as the generator in the model file
+            self.model = generator_network(self.img_shape, filters=128, name="Test_Gen") #this has to be the same as the generator in the model file
             self.model.load_weights("models/%s" % (model_name))
         else:
             self.model_name = model_name
@@ -149,6 +162,24 @@ class evaluator(object):
         
         mean_ssim = total_ssim/batch_size
         return mean_ssim
+        
+        
+        """
+        #GPU stops to work when I have to compute it for many images although I split like it is shown below.
+        #This issue should be investigated soon.
+        
+        #SSIM is computed using GPU. Therefore, we must split the batch of images into smaller sub-batches.
+        avg_ssim=0
+        number_of_splits=batch_size//10
+        for i in range(number_of_splits):
+            avg_ssim+=self.ssim_evaluator.compute(fake_dslr_images[i*10 : (i+1)*10], dslr_imgs[i*10: (i+1)*10])
+        
+        avg_ssim=avg_ssim/number_of_splits
+        
+        return avg_ssim
+        """
+        
+        
     
     def no_reference_test(self, model_name, batch_size=None, baseline=False):
         image_test_path=glob("C:\\Users\\Georgios\\Desktop\\4year project\\wespeDATA\\dped\\dped\\iphone\\test_data\\full_size_test_images\\*")
@@ -169,7 +200,7 @@ class evaluator(object):
             Y_phone_imgs.append(Y)
         
         Y_phone_imgs=np.array(Y_phone_imgs)
-        niqe_val = niqe(Y_phone_imgs)
+        #niqe_val = niqe(Y_phone_imgs)
         return niqe_val
     
     def enhance_image(self, img_path, model_name, reference=True):
@@ -182,7 +213,7 @@ class evaluator(object):
         
         
         self.model_name = model_name
-        self.model = generator_network(img_shape, filters=128, name="Test Generator") #this has to be the same as the generator in the model file
+        self.model = generator_network(img_shape, filters=64, name="Test Generator") #this has to be the same as the generator in the model file
         self.model.load_weights("models/%s" % (model_name))
         
         
@@ -197,11 +228,13 @@ class evaluator(object):
             #fig.set_size_inches(10, 8)
             ax = axs[0]
             ax.imshow(phone_image)
-            ax.set_title("phone image")
+            ax.set_title("IPhone 3GS Image")
+            ax.axis('off')
             
             ax = axs[1]
             ax.imshow(fake_dslr_image[0])
-            ax.set_title("enahnced phone image")
+            ax.set_title("Enhanced Image")
+            ax.axis('off')
             #filename=os.path.basename(img_path)
             #fig.savefig("sample images\\"+filename, dpi = )
             #plt.show()
@@ -214,14 +247,12 @@ class evaluator(object):
             plt.imsave(file_save, fake_dslr_image[0])
         
            
-      
+
 
 new_eval = evaluator()
 image_paths=glob("C:\\Users\\Test-PC\\Desktop\\Github\\dped\\iphone\\test_data\\full_size_test_images\\*")
-#print(image_paths)
-model_name="4_0.h5"
-for i in range(len(image_paths)):
+model_name="4_150.h5"
+for i in range(0,29):
     new_eval.enhance_image(image_paths[i], model_name, reference=True)
-
 
 

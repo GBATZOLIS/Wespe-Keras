@@ -1,5 +1,8 @@
 # Wespe-Keras
 
+<<<<<<< HEAD
+This repository contains an unofficial implementation of WESPE paper in Keras. There are some modifications such as the use of the Identity loss which is not used in WESPE but used in CycleGAN and the use of InstaceNormalisation layer which improved the stability of the training.
+=======
 This repository is an unofficial implementation of the WESPE GAN in Keras (https://arxiv.org/pdf/1709.01118.pdf). The paper achieves unsupervised/weakly supervised smartphone image enhancement by mapping images from the domain of phone images to the domain of DSLR images (denoted as domain A and B respectively) using an architecture inspired by the CycleGAN (https://arxiv.org/pdf/1703.10593.pdf). The architecture of Wespe is shown below.
 
 <p align="center"> 
@@ -18,7 +21,9 @@ I have modified the model proposed by the paper because some crucial training de
 
 * **A cycle reconstruction loss in both domain A and B**. I have discovered that imposing a cycle reconstruction loss in both domain A and B significantly improved the performance of the network compared to using a cycle reconstruction loss only in domain A.
 
+>>>>>>> 2a6364a9255f5454937872f4806c73514fcd68ca
 
+Image enhancement is achieved by mapping images from the domain of phone images to the domain of DSLR images (denoted as domain A and B respectively in the code).
 
 ## Getting Started
 
@@ -26,21 +31,27 @@ I have modified the model proposed by the paper because some crucial training de
 Steps to run the training:
 
 * Put the training and test data of domains A and B under the folders data/trainA, data/trainB, data/testA and data/testB
+<<<<<<< HEAD
+* run the model.py file (you can change the patch size, epochs, batch_size and other parameters in the main)
+=======
 * run the modelwithVGGloss.py file (I have tuned the hyperparameters based on preliminary testing on the DPED dataset. You will probably have to tune the hyperparameters of the model for different domain A and B datasets)
+>>>>>>> 2a6364a9255f5454937872f4806c73514fcd68ca
 
 ## Requirements
-You don't need all the packages for the training of WESPE. However, for the full use of the entire repository you need all the packages listed below:
 
 * keras (tensorflow backend)
 * scipy
 * Pillow
-* openCV
 * scikit-image
-* Matplotlib
 
 
 ## Preliminary experiments/results
 
+<<<<<<< HEAD
+Visual results after 1 and 2 epochs (about 1.5h of training time in GTX 2080-ti) are saved in the folder "sample images"
+
+Qualitative & quantitative results of the full training and the trained model will be released soon
+=======
 The model was trained for 7 epochs on 1.5% of the training DPED data.
 
 The evolution of the average SSIM value on the test data of the DPED dataset:
@@ -58,3 +69,4 @@ Visual results after 4 epochs.
 ![Image 22](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/preliminary%20results/Figure_22.png)
 ![Image 25](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/preliminary%20results/Figure_25.png)
 ![Image 13](https://github.com/GBATZOLIS/Wespe-Keras/blob/master/preliminary%20results/Figure_13.png)
+>>>>>>> 2a6364a9255f5454937872f4806c73514fcd68ca

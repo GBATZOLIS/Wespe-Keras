@@ -1,17 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Created on Thu Sep 26 15:03:33 2019
-
-@author: Georgios
-"""
-
-# -*- coding: utf-8 -*-
-"""
 Created on Wed Sep 18 17:12:49 2019
 
 @author: Georgios
 """
 
+from __future__ import print_function, division
 import scipy
 
 from keras_contrib.layers.normalization.instancenormalization import InstanceNormalization
@@ -20,7 +14,7 @@ from keras_contrib.losses.dssim import DSSIMObjective
 
 # define layer
 #layer = InstanceNormalization(axis=-1)
-from glob import glob
+
 import imageio #gif creation
 
 import keras.backend as K
@@ -43,9 +37,7 @@ from keras.activations import relu,tanh,sigmoid
 from keras.initializers import glorot_normal, RandomNormal
 from keras.models import Model
 from preprocessing import gauss_kernel, rgb2gray, NormalizeData
-#from architectures import resblock
-
-from loss_functions import  total_variation, binary_crossentropy, vgg_loss, ssim
+from loss_functions import  total_variation, binary_crossentropy, vgg_loss, ssim, L2
 #from keras_radam import RAdam
 from keras.applications.vgg19 import VGG19
 from test_performance import evaluator
@@ -56,10 +48,8 @@ get_ipython().run_line_magic('matplotlib', 'qt')
 import warnings
 warnings.filterwarnings("ignore")
 
-from ROIextraction import cropper
 
-
-class FeedBackGAN():
+class WespeGAN():
     def __init__(self, patch_size=(100,100)):
         # Input shape
         self.img_rows = patch_size[0]
@@ -71,17 +61,10 @@ class FeedBackGAN():
         patch = int(np.ceil(self.img_shape[0] / 2**4))
         self.disc_patch = (patch, patch, 1)
         
-        #Feedback Settings
-        #test image paths
-        self.test_image_dir="data/test phone images/"
-        self.test_image_paths=glob(self.test_image_dir+"*")
-        self.MSE_weights=np.ones(128)
-        self.sum_of_weights=np.sum(self.MSE_weights)
-        
         #details for gif creation featuring the progress of the training.
-        #self.gif_batch_size=5
-        #self.gif_frames_per_sample_interval=3
-        #self.gif_images = [[] for i in range(self.gif_batch_size)]
+        self.gif_batch_size=5
+        self.gif_frames_per_sample_interval=3
+        self.gif_images = [[] for i in range(self.gif_batch_size)]
         
         #manual logs
         #this will be changed using tensorboard
@@ -90,11 +73,11 @@ class FeedBackGAN():
         self.log_D_textureloss=[]
         self.log_G_colorloss=[]
         self.log_G_textureloss=[]
-        self.log_ReconstructionLossA=[]
-        self.log_ReconstructionLossB=[]
+        self.log_ReconstructionLoss=[]
         self.log_TotalVariance=[]
         self.log_sample_ssim_time_point=[]
         self.log_sample_ssim=[]
+        self.log_sample_ssim_q=[]
             
         
         # Configure data loader
@@ -108,7 +91,8 @@ class FeedBackGAN():
         #print(self.texture_weights.shape)
         
         #set the optimiser
-        optimizer = Adam(0.0002, beta_1=0.5)
+        #optimizerG = Adam(0.0001, beta_1=0.5)
+        optimizerD = Adam(0.0002, beta_1=0.5)
         #optimizer = RAdam()
         
        
@@ -120,9 +104,9 @@ class FeedBackGAN():
         self.D_texture = self.discriminator_network(name="Texture_Discriminator", preprocess = "gray")
         
         
-        self.D_color.compile(loss='mse', loss_weights=[0.5], optimizer=optimizer, metrics=['accuracy'])
+        self.D_color.compile(loss='mse', loss_weights=[0.5], optimizer=optimizerD, metrics=['accuracy'])
         
-        self.D_texture.compile(loss='mse', loss_weights=[0.5], optimizer=optimizer, metrics=['accuracy'])
+        self.D_texture.compile(loss='mse', loss_weights=[0.5], optimizer=optimizerD, metrics=['accuracy'])
 
         #-------------------------
         # Construct Computational
@@ -135,7 +119,7 @@ class FeedBackGAN():
         
         #instantiate the VGG model
         self.vgg_model = VGG19(weights='imagenet', include_top=False, input_shape = self.img_shape)
-        self.layer_name="block2_conv2" #128 filters in the feature map
+        self.layer_name="block2_conv2"
         self.inter_VGG_model = Model(inputs=self.vgg_model.input, outputs=self.vgg_model.get_layer(self.layer_name).output)
         
         self.inter_VGG_model.trainable=False
@@ -150,12 +134,8 @@ class FeedBackGAN():
         #identity_B = self.G(img_B)
         fake_A = self.F(img_B)
         
-        # Translate images back to original domain
-        reconstr_A = self.F(fake_B)
-        reconstr_A_vgg = self.inter_VGG_model(reconstr_A)
-        
-        reconstr_B = self.G(fake_A)
-        reconstr_B_vgg = self.inter_VGG_model(reconstr_B)
+        fake_B_vgg = self.inter_VGG_model(fake_B)
+        fake_A_vgg = self.inter_VGG_model(fake_A)
         
 
         # For the combined model we will only train the generators
@@ -168,28 +148,18 @@ class FeedBackGAN():
 
         # Combined model trains generators to fool discriminators
         self.combined = Model(inputs=[img_A,img_B],
-                              outputs=[valid_A_color, valid_A_texture, reconstr_A_vgg, reconstr_B_vgg, fake_B])
+                              outputs=[valid_A_color, valid_A_texture, fake_A_vgg, fake_B_vgg, fake_B])
         
         
         #ssim_loss = DSSIMObjective()
-        self.combined.compile(loss=['mse', 'mse', self.weighted_MSE, self.weighted_MSE, total_variation],
+        self.combined.compile(loss=['mse', 'mse', 'mae', 'mae', total_variation],
                             loss_weights=[0.5, 0.5, 1, 1, 0.5],
-                            optimizer=optimizer)
+                            optimizer=optimizerD)
         
         print(self.combined.summary())
         
-    
-    def weighted_MSE(self, y_true, y_pred):
-        result=0
-        #filters=shape[3]
         
-        for i in range(128):
-            result+=self.MSE_weights[i]*K.mean(K.square(y_true[:,:,:,i]-y_pred[:,:,:,i]))
-        
-        result=result/self.sum_of_weights
-        
-        return result
-    
+
     def generator_network(self, filters, name):
         
         def resblock(feature_in, filters, num):
@@ -233,7 +203,7 @@ class FeedBackGAN():
         temp = Activation('relu')(temp)
         #temp = LeakyReLU(alpha=0.2)(temp)
         
-        temp = Conv2D(3, (7,7) , strides = 1, padding = 'SAME', name = 'CONV_5', kernel_initializer=init)(temp)
+        temp = Conv2D(3, (9,9) , strides = 1, padding = 'SAME', name = 'CONV_5', kernel_initializer=init)(temp)
         #temp = Activation('sigmoid')(temp)
         #temp = Lambda(lambda x: K.clip(x, 0, 1), output_shape=lambda x:x)(temp)
         
@@ -307,6 +277,7 @@ class FeedBackGAN():
         patch_out = Conv2D(1, (4,4), padding='same', kernel_initializer=init)(d)
         # define model
         return Model(inputs = image, outputs = patch_out, name = name)
+        
     
     
     def logger(self,):
@@ -325,8 +296,7 @@ class FeedBackGAN():
         ax.set_title("Generator Adv losses")
         
         ax = axs[1,0]
-        ax.plot(self.log_TrainingPoint, self.log_ReconstructionLossA, label="reconstruction A" )
-        ax.plot(self.log_TrainingPoint, self.log_ReconstructionLossB, label="reconstruction B" )
+        ax.plot(self.log_TrainingPoint, self.log_ReconstructionLoss)
         ax.set_title("Cycle-Content loss")
         
         ax = axs[1,1]
@@ -337,11 +307,15 @@ class FeedBackGAN():
         
         fig, axs = plt.subplots(1,1)
         ax=axs
-        ax.plot(self.log_sample_ssim_time_point, self.log_sample_ssim)
+        ax.plot(self.log_sample_ssim_time_point, self.log_sample_ssim, label="Unquantised")
+        ax.plot(self.log_sample_ssim_time_point, self.log_sample_ssim_q, label="Quantised")
+        ax.legend()
         ax.set_title("sample SSIM value")
         fig.savefig("progress/sample_ssim.png")
         
         plt.close('all')
+        
+        
         
         
     
@@ -359,12 +333,9 @@ class FeedBackGAN():
             # Adversarial loss ground truths
             #valid = np.ones((batch_size,1))
             #fake = np.zeros((batch_size,1))
-            
-            #Adversarial ground truth for patches corresponding to certain receptive fields
             valid = np.ones((batch_size,) + self.disc_patch)
             fake = np.zeros((batch_size,) + self.disc_patch)
-            
-            
+        
             #instantiate the evaluator
             performance_evaluator = evaluator(model=self.G, img_shape=self.img_shape)
             
@@ -384,13 +355,6 @@ class FeedBackGAN():
                         # Translate images to opposite domain
                         fake_B = self.G.predict(imgs_A)
                         
-                        """
-                        #get self.gif_frames_per_sample_interval fake gif frames in sample_interval batches
-                        if batch_i % int(sample_interval/self.gif_frames_per_sample_interval)==0:
-                            fake_gif_batch = self.G.predict(gif_batch)
-                            for i in range(self.gif_batch_size):
-                                self.gif_images[i].append(fake_gif_batch[i])
-                        """
         
                         # Train the discriminators (original images = real / translated = Fake)
                         dcolor_loss_real = self.D_color.train_on_batch(imgs_B, valid)
@@ -421,8 +385,7 @@ class FeedBackGAN():
                         
                         self.log_G_colorloss.append(g_loss[1])
                         self.log_G_textureloss.append(g_loss[2])
-                        self.log_ReconstructionLossA.append(g_loss[3])
-                        self.log_ReconstructionLossB.append(g_loss[4])
+                        self.log_ReconstructionLoss.append(np.mean(g_loss[3:5]))
                         self.log_TotalVariance.append(g_loss[5])
                         training_time_point = epoch+batch_i/self.data_loader.n_batches
                         self.log_TrainingPoint.append(np.around(training_time_point,3))
@@ -450,8 +413,7 @@ class FeedBackGAN():
                             performance_evaluator.num_batch = batch_i
                             
                             """save the model"""
-                            model_name="{}_{}.h5".format(epoch, batch_i)
-                            self.G.save("models/"+model_name)
+                            self.G.save("models/{}_{}.h5".format(epoch, batch_i))
                             print("Epoch: {} --- Batch: {} ---- model saved".format(epoch, batch_i))
                             
                             """generation of perceptual results"""
@@ -459,34 +421,21 @@ class FeedBackGAN():
                             
                             """SSIM based evaluation on a batch of test data"""
                             #calculate mean SSIM on approximately 10% of the test data
-                            mean_sample_ssim = performance_evaluator.objective_test(500)
+                            mean_sample_ssim_q = performance_evaluator.objective_test(500, quantiser=True)
+                            mean_sample_ssim = performance_evaluator.objective_test(500, quantiser=False)
+                            
                             print("Sample mean SSIM ---------%05f--------- " %(mean_sample_ssim))
                             log_sample_ssim_time_point = epoch+batch_i/self.data_loader.n_batches
                             self.log_sample_ssim_time_point.append(np.around(log_sample_ssim_time_point,3))
+                            
+                            self.log_sample_ssim_q.append(mean_sample_ssim_q)
                             self.log_sample_ssim.append(mean_sample_ssim)
                             
                             """logger"""
                             self.logger()
-                            
-                            
+                         
                         
-                        """
-                        #save the gifs every two sample intervals
-                        if batch_i % (10*sample_interval) == 0 and batch_i!=0:
-                            #save the gif images every 5 sample intervals for inspection
-                             
-                            #generator predicts values just outside [0,1] in the beginning of the training. Clip it to [0,1]
-                            gif_images = np.clip(np.array(self.gif_images), 0, 1)*255.
-                            
-                            #avoid data type conversion warning
-                            gif_images = gif_images.astype('uint8') 
-                            
-                            #save the generated gifs
-                            for i in range(self.gif_batch_size):
-                                imageio.mimsave('progress/gif_image_{}.gif'.format(i), gif_images[i])
-                        """
-                        
-                        if batch_i % int(self.data_loader.n_batches/2) == 0 and not(epoch==0 and batch_i==0):
+                        if batch_i % int(self.data_loader.n_batches/4) == 0:
                             """update the SSIM evolution graph saved in the file progress"""
                             
                             #update the attributes of the performance_evaluator class
@@ -511,72 +460,24 @@ class FeedBackGAN():
                             num_values_saved = len(performance_evaluator.ssim_vals)
                             plt.plot(np.array(performance_evaluator.training_points), np.array(performance_evaluator.ssim_vals), color='blue', label="SSIM")
                             plt.plot(np.array(performance_evaluator.training_points), np.ones(num_values_saved)*0.9, color = 'red', label="target SSIM")
-                            plt.plot(np.array(performance_evaluator.training_points), np.ones(num_values_saved)*0.750454, color = 'green', label="baseline SSIM")
+                            plt.plot(np.array(performance_evaluator.training_points), np.ones(num_values_saved)*0.75054, color = 'green', label="baseline SSIM")
                             plt.title("mean SSIM vs training epochs")
                             plt.legend()
                             fig.savefig("progress/ssim_curve.png")
-                            plt.close('all')
-             
-                """call the cropper utility on epoch end"""
-                #1.) generate the perceptual results
-                #2.) select bad regions
-                #3.) crop the batches
-                #4.) Measure the activations
-                #5.) Update the weighted MSE loss parameters
-                #6.) Move to the next epoch
                 
-                #generate perceptual results using the test_performace class
-                new_eval = evaluator()
-                
-                for i in range(10):
-                    new_eval.enhance_image(self.test_image_paths[i], model_name, reference=False)
-                    
-                #instantiate the cropper class located in the ROI extraction file
-                new_cropper=cropper()
-                #prompt the user to select the regions of the generated images that they think are not enhanced properly
-                new_cropper.generate_ROI_regions(enhanced_path="generated_images/")
-                
-                #check whether feedback was given
-                feedback=False
-                for key in new_cropper.valid_rectangles:
-                    if new_cropper.valid_rectangles[key]:
-                        feedback=True
-                    
-                if feedback==False:
-                    #use the current mse weights if there is no feedback given
-                    continue
-                else:
-                    #if feedback from the human supervisor was given, then:
-                    
-                    #extract the selected patches from the original images
-                    new_cropper.extract_patches(raw_path=self.test_image_dir)
-                    
-                    #use those patches to find the activations of the selected layer of the VGG19 network
-                    normalised_activations = new_cropper.inspect_activation() #get the normalised activations: vector range [0,1]
-                    
-                    #parameters alpha and beta determine how much the weights are influenced by the human feeback
-                    #decreasing beta and increasing alpha increases the responsiveness to human feedback
-                    #large alpha values destablise the training
-                    
-                    alpha=0.8
-                    beta=0.2
-                    #update the new MSE weights using the activations of the inadequately reconstructed patches
-                    self.MSE_weights = alpha * self.MSE_weights + beta * normalised_activations
-                    self.sum_of_weights = np.sum(self.MSE_weights) #get the sum of the MSE weights to normalise the weighted MSE loss properly
-                    
-            
-            
-            
                         
         except KeyboardInterrupt:
             print("Training has been interrupted")
+                        
         
 
 
 patch_size=(100, 100)
-epochs=15
-batch_size=8
-sample_interval =100 #after sample_interval batches save the model and generate sample images
+epochs=10
+batch_size=20
+sample_interval = 125 #after sample_interval batches save the model and generate sample images
     
-gan = FeedBackGAN(patch_size=patch_size)
+gan = WespeGAN(patch_size=patch_size)
 gan.train(epochs=epochs, batch_size=batch_size, sample_interval=sample_interval)
+
+print(np.amax(gan.log_sample_ssim))

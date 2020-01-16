@@ -114,7 +114,7 @@ class WespeGAN():
         #-------------------------
 
         # Build the generators
-        self.G = self.generator_network(filters = 128, name = "Forward_Generator_G")
+        self.G = self.generator_network(filters = 64, name = "Forward_Generator_G")
         self.F = self.generator_network(filters = 64, name = "Backward_Generator_F")
         
         #instantiate the VGG model
@@ -171,8 +171,11 @@ class WespeGAN():
             init = RandomNormal(stddev=0.02)
             
             temp =  Conv2D(filters, (3, 3), strides = 1, padding = 'SAME', name = ('resblock_%d_CONV_1' %num), kernel_initializer = init)(feature_in)
+            temp = BatchNormalization(axis=-1)(temp)
             temp = LeakyReLU(alpha=0.2)(temp)
+            
             temp =  Conv2D(filters, (3, 3), strides = 1, padding = 'SAME', name = ('resblock_%d_CONV_2' %num), kernel_initializer = init)(temp)
+            temp = BatchNormalization(axis=-1)(temp)
             temp = LeakyReLU(alpha=0.2)(temp)
             
             return Add()([temp, feature_in])
@@ -183,7 +186,7 @@ class WespeGAN():
         x = Lambda(lambda x: 2.0*x - 1.0, output_shape=lambda x:x)(image)
         b1_in = Conv2D(filters, (9,9), strides = 1, padding = 'SAME', name = 'CONV_1', activation = 'relu', kernel_initializer = init)(x)
         #b1_in = LeakyReLU(alpha=0.2)(b1_in)
-        b1_in = Activation('relu')(b1_in)
+        b1_in = LeakyReLU(alpha=0.2)(b1_in)
         #b1_in = relu()(b1_in)
         # residual blocks
         b1_out = resblock(b1_in, filters, 1)
@@ -193,21 +196,21 @@ class WespeGAN():
         
         # conv. layers after residual blocks
         temp = Conv2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_2', kernel_initializer=init)(b4_out)
-        #temp = BatchNormalization(axis=-1)(temp)
-        temp = Activation('relu')(temp)
+        #temp = BatchNormalization()(temp)
+        temp = LeakyReLU(alpha=0.2)(temp)
         #temp = LeakyReLU(alpha=0.2)(temp)
         
         temp = Conv2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_3', kernel_initializer=init)(temp)
-        #temp = BatchNormalization(axis=-1)(temp)
-        temp = Activation('relu')(temp)
+        #temp = BatchNormalization()(temp)
+        temp = LeakyReLU(alpha=0.2)(temp)
         #temp = LeakyReLU(alpha=0.2)(temp)
         
         temp = Conv2D(filters, (3,3) , strides = 1, padding = 'SAME', name = 'CONV_4', kernel_initializer=init)(temp)
-        #temp = BatchNormalization(axis=-1)(temp)
-        temp = Activation('relu')(temp)
+        #temp = BatchNormalization()(temp)
+        temp = LeakyReLU(alpha=0.2)(temp)
         #temp = LeakyReLU(alpha=0.2)(temp)
         
-        temp = Conv2D(3, (7,7) , strides = 1, padding = 'SAME', name = 'CONV_5', kernel_initializer=init)(temp)
+        temp = Conv2D(3, (9,9) , strides = 1, padding = 'SAME', name = 'CONV_5', kernel_initializer=init)(temp)
         #temp = Activation('sigmoid')(temp)
         #temp = Lambda(lambda x: K.clip(x, 0, 1), output_shape=lambda x:x)(temp)
         
@@ -258,27 +261,30 @@ class WespeGAN():
         # C64
         d = Lambda(lambda x: 2.0*x - 1.0, output_shape=lambda x:x)(image_processed)
         
-        d = Conv2D(64, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
-        #d = InstanceNormalization(axis=-1)(d)
+        d = Conv2D(64, (5,5), strides=(2,2), padding='same', kernel_initializer=init)(d)
         d = LeakyReLU(alpha=0.2)(d)
         # C128
-        d = Conv2D(128, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
-        d = InstanceNormalization(axis=-1)(d)
+        d = Conv2D(128, (5,5), strides=(2,2), padding='same', kernel_initializer=init)(d)
+        #d = InstanceNormalization(axis=-1)(d)
+        d = BatchNormalization(axis=-1)(d)
         d = LeakyReLU(alpha=0.2)(d)
         # C256
-        d = Conv2D(256, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
-        d = InstanceNormalization(axis=-1)(d)
+        d = Conv2D(256, (5,5), strides=(2,2), padding='same', kernel_initializer=init)(d)
+        #d = InstanceNormalization(axis=-1)(d)
+        d = BatchNormalization(axis=-1)(d)
         d = LeakyReLU(alpha=0.2)(d)
         # C512
-        d = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
-        d = InstanceNormalization(axis=-1)(d)
+        d = Conv2D(512, (3,3), strides=(2,2), padding='same', kernel_initializer=init)(d)
+        #d = InstanceNormalization(axis=-1)(d)
+        d = BatchNormalization(axis=-1)(d)
         d = LeakyReLU(alpha=0.2)(d)
         # second last output layer
-        d = Conv2D(512, (4,4), padding='same', kernel_initializer=init)(d)
-        d = InstanceNormalization(axis=-1)(d)
+        d = Conv2D(512, (3,3), padding='same', kernel_initializer=init)(d)
+        #d = InstanceNormalization(axis=-1)(d)
+        d = BatchNormalization(axis=-1)(d)
         d = LeakyReLU(alpha=0.2)(d)
         # patch output
-        patch_out = Conv2D(1, (4,4), padding='same', kernel_initializer=init)(d)
+        patch_out = Conv2D(1, (3,3), padding='same', kernel_initializer=init)(d)
         # define model
         return Model(inputs = image, outputs = patch_out, name = name)
         
@@ -311,9 +317,9 @@ class WespeGAN():
         
         fig, axs = plt.subplots(1,1)
         ax=axs
-        ax.plot(self.log_sample_ssim_time_point, self.log_sample_ssim, label="Unquantised")
-        ax.plot(self.log_sample_ssim_time_point, self.log_sample_ssim_q, label="Quantised")
-        ax.legend()
+        ax.plot(self.log_sample_ssim_time_point, self.log_sample_ssim)
+        #ax.plot(self.log_sample_ssim_time_point, self.log_sample_ssim_q, label="Quantised")
+        #ax.legend()
         ax.set_title("sample SSIM value")
         fig.savefig("progress/sample_ssim.png")
         
@@ -425,21 +431,21 @@ class WespeGAN():
                             
                             """SSIM based evaluation on a batch of test data"""
                             #calculate mean SSIM on approximately 10% of the test data
-                            mean_sample_ssim_q = performance_evaluator.objective_test(300, quantiser=True)
-                            mean_sample_ssim = performance_evaluator.objective_test(300, quantiser=False)
+                            #mean_sample_ssim_q = performance_evaluator.objective_test(500, quantiser=True)
+                            mean_sample_ssim = performance_evaluator.objective_test(500, quantiser=False)
                             
                             print("Sample mean SSIM ---------%05f--------- " %(mean_sample_ssim))
                             log_sample_ssim_time_point = epoch+batch_i/self.data_loader.n_batches
                             self.log_sample_ssim_time_point.append(np.around(log_sample_ssim_time_point,3))
                             
-                            self.log_sample_ssim_q.append(mean_sample_ssim_q)
+                            #self.log_sample_ssim_q.append(mean_sample_ssim_q)
                             self.log_sample_ssim.append(mean_sample_ssim)
                             
                             """logger"""
                             self.logger()
                          
                         
-                        if batch_i % int(self.data_loader.n_batches/1) == 0:
+                        if batch_i % int(self.data_loader.n_batches/5) == 0 and not(epoch==0 and batch_i==0):
                             """update the SSIM evolution graph saved in the file progress"""
                             
                             #update the attributes of the performance_evaluator class
@@ -475,11 +481,13 @@ class WespeGAN():
                         
         
 
-if __name__ == '__main__':
-    patch_size=(100, 100)
-    epochs=10
-    batch_size=8
-    sample_interval = 100 #after sample_interval batches save the model and generate sample images
+
+patch_size=(100, 100)
+epochs=10
+batch_size=15
+sample_interval = 100 #after sample_interval batches save the model and generate sample images
     
-    gan = WespeGAN(patch_size=patch_size)
-    gan.train(epochs=epochs, batch_size=batch_size, sample_interval=sample_interval)
+gan = WespeGAN(patch_size=patch_size)
+gan.train(epochs=epochs, batch_size=12, sample_interval=sample_interval)
+
+print(np.amax(gan.log_sample_ssim))
